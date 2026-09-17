@@ -1,0 +1,9 @@
+#!/bin/sh
+# Run the guest-assistant frontend in watch mode (output: guest-assistant/dist)
+
+# Stop on errors
+set -e
+
+cd "$(dirname "$0")/../.."
+
+./node_modules/.bin/gulp develop-guest-assistant

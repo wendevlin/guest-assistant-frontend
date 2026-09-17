@@ -494,6 +494,21 @@ const createGalleryConfig = ({ isProdBuild, latestBuild, isTestBuild }) =>
 const createLandingPageConfig = ({ isProdBuild, latestBuild }) =>
   createRspackConfig(bundle.config.landingPage({ isProdBuild, latestBuild }));
 
+const createGuestAssistantConfig = ({
+  isProdBuild,
+  latestBuild,
+  isStatsBuild,
+  isTestBuild,
+}) =>
+  createRspackConfig(
+    bundle.config.guestAssistant({
+      isProdBuild,
+      latestBuild,
+      isStatsBuild,
+      isTestBuild,
+    })
+  );
+
 const createE2eTestAppConfig = ({
   isProdBuild,
   latestBuild,
@@ -516,5 +531,6 @@ module.exports = {
   createGalleryConfig,
   createRspackConfig,
   createLandingPageConfig,
+  createGuestAssistantConfig,
   createE2eTestAppConfig,
 };

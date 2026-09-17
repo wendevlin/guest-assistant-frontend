@@ -308,6 +308,21 @@ module.exports.config = {
     };
   },
 
+  guestAssistant({ isProdBuild, latestBuild, isStatsBuild, isTestBuild }) {
+    return {
+      name: "guest-assistant" + nameSuffix(latestBuild),
+      entry: {
+        entrypoint: path.resolve(paths.guestAssistant_dir, "src/entrypoint.js"),
+      },
+      outputPath: outputPath(paths.guestAssistant_output_root, latestBuild),
+      publicPath: publicPath(latestBuild),
+      isProdBuild,
+      latestBuild,
+      isStatsBuild,
+      isTestBuild,
+    };
+  },
+
   e2eTestApp({ isProdBuild, latestBuild, isStatsBuild, isTestBuild }) {
     return {
       name: "e2e-test-app" + nameSuffix(latestBuild),

@@ -14,6 +14,7 @@ import {
   createDemoConfig,
   createGalleryConfig,
   createLandingPageConfig,
+  createGuestAssistantConfig,
   createE2eTestAppConfig,
 } from "../rspack.cjs";
 
@@ -277,6 +278,33 @@ gulp.task("rspack-watch-landing-page", () => {
 gulp.task("rspack-prod-landing-page", () =>
   prodBuild(
     bothBuilds(createLandingPageConfig, {
+      isProdBuild: true,
+      isStatsBuild: env.isStatsBuild(),
+      isTestBuild: env.isTestBuild(),
+    })
+  )
+);
+
+gulp.task("rspack-watch-guest-assistant", () => {
+  // This command will run forever because we don't close compiler
+  rspack(
+    process.env.ES5
+      ? bothBuilds(createGuestAssistantConfig, { isProdBuild: false })
+      : createGuestAssistantConfig({ isProdBuild: false, latestBuild: true })
+  ).watch({ poll: isWsl }, doneHandler());
+
+  gulp.watch(
+    path.join(paths.translations_src, "en.json"),
+    gulp.series(
+      "build-guest-assistant-translations",
+      "copy-translations-guest-assistant"
+    )
+  );
+});
+
+gulp.task("rspack-prod-guest-assistant", () =>
+  prodBuild(
+    bothBuilds(createGuestAssistantConfig, {
       isProdBuild: true,
       isStatsBuild: env.isStatsBuild(),
       isTestBuild: env.isTestBuild(),

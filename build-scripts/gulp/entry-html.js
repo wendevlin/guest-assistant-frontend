@@ -303,6 +303,28 @@ gulp.task(
   )
 );
 
+const GUEST_ASSISTANT_PAGE_ENTRIES = { "index.html": ["entrypoint"] };
+
+gulp.task(
+  "gen-pages-guest-assistant-dev",
+  genPagesDevTask(
+    GUEST_ASSISTANT_PAGE_ENTRIES,
+    paths.guestAssistant_dir,
+    paths.guestAssistant_output_root
+  )
+);
+
+gulp.task(
+  "gen-pages-guest-assistant-prod",
+  genPagesProdTask(
+    GUEST_ASSISTANT_PAGE_ENTRIES,
+    paths.guestAssistant_dir,
+    paths.guestAssistant_output_root,
+    paths.guestAssistant_output_latest,
+    paths.guestAssistant_output_es5
+  )
+);
+
 const E2E_TEST_APP_PAGE_ENTRIES = {
   "index.html": ["main"],
   "dashboard.html": ["dashboard"],

@@ -173,7 +173,9 @@ const setFragment = (fragment) => async () => {
 };
 
 const panelFragment = (fragment) =>
-  fragment !== "base" && fragment !== "landing-page";
+  fragment !== "base" &&
+  fragment !== "landing-page" &&
+  fragment !== "guest-assistant";
 
 const HASHES = new Map();
 
@@ -220,6 +222,20 @@ const createTranslations = async () => {
             case "landing-page":
               // landing-page key is at the top level
               return [flatten(data["landing-page"]), ""];
+            case "guest-assistant":
+              // Guest Assistant ships one file per locale: the base
+              // translations, the lovelace panel and its own top-level key.
+              return [
+                flatten({
+                  ...data,
+                  ui: {
+                    ...data.ui,
+                    panel: { lovelace: data.ui.panel.lovelace },
+                  },
+                  "landing-page": undefined,
+                }),
+                "",
+              ];
             default:
               // Create a fragment with only the given panel
               return [
@@ -319,4 +335,9 @@ gulp.task(
 gulp.task(
   "build-landing-page-translations",
   gulp.series(setFragment("landing-page"), "build-translations")
+);
+
+gulp.task(
+  "build-guest-assistant-translations",
+  gulp.series(setFragment("guest-assistant"), "build-translations")
 );

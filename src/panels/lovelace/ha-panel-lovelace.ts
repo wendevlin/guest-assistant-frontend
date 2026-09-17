@@ -35,6 +35,7 @@ import { checkLovelaceConfig } from "./common/check-lovelace-config";
 import { loadLovelaceResources } from "./common/load-resources";
 import { showSaveDialog } from "./editor/show-save-config-dialog";
 import "./hui-root";
+import type { ExtraActionItem } from "./hui-root";
 import {
   checkStrategyShouldRegenerate,
   generateLovelaceDashboardStrategy,
@@ -65,6 +66,9 @@ export class LovelacePanel extends LitElement {
   @property({ type: Boolean }) public narrow = false;
 
   @property({ attribute: false }) public route?: Route;
+
+  /** Additional toolbar actions rendered by hui-root (e.g. embedding apps). */
+  @property({ attribute: false }) public extraActionItems?: ExtraActionItem[];
 
   @state() private _panelState: "loading" | "loaded" | "error" | "yaml-editor" =
     "loading";
@@ -126,6 +130,7 @@ export class LovelacePanel extends LitElement {
           .lovelace=${this.lovelace}
           .route=${this.route}
           .narrow=${this.narrow}
+          .extraActionItems=${this.extraActionItems}
           @config-refresh=${this._forceFetchConfig}
         ></hui-root>
       `;

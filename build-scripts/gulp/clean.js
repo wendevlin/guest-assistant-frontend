@@ -47,6 +47,17 @@ gulp.task(
 );
 
 gulp.task(
+  "clean-guest-assistant",
+  gulp.parallel("clean-translations", async () =>
+    deleteSync([
+      paths.guestAssistant_output_root,
+      paths.guestAssistant_build,
+      paths.build_dir,
+    ])
+  )
+);
+
+gulp.task(
   "clean-e2e-test-app",
   gulp.parallel("clean-translations", async () =>
     deleteSync([paths.e2eTestApp_output_root, paths.build_dir])

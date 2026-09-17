@@ -12,6 +12,7 @@ import "./gather-static.js";
 import "./gen-device-classes.js";
 import "./gen-icons-json.js";
 import "./gen-sensor-entity-constants.js";
+import "./guest-assistant.js";
 import "./landing-page.js";
 import "./locale-data.js";
 import "./map-assets.js";

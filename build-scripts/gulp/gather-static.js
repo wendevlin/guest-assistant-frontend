@@ -179,6 +179,26 @@ gulp.task("copy-static-landing-page", async () => {
   copyTranslations(paths.landingPage_output_static);
 });
 
+gulp.task("copy-translations-guest-assistant", async () => {
+  copyTranslations(paths.guestAssistant_output_static);
+});
+
+gulp.task("copy-static-guest-assistant", async () => {
+  // Copy app static files (icons, favicons, etc.)
+  fs.copySync(polyPath("public/static"), paths.guestAssistant_output_static);
+  // Copy guest-assistant static files
+  fs.copySync(
+    path.resolve(paths.guestAssistant_dir, "public"),
+    paths.guestAssistant_output_root
+  );
+
+  await copyMapPanel(paths.guestAssistant_output_static);
+  copyFonts(paths.guestAssistant_output_static);
+  copyTranslations(paths.guestAssistant_output_static);
+  copyLocaleData(paths.guestAssistant_output_static);
+  copyMdiIcons(paths.guestAssistant_output_static);
+});
+
 gulp.task("copy-static-e2e-test-app", async () => {
   // Copy app static files (icons, polyfills, etc.)
   fs.copySync(

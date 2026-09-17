@@ -1,0 +1,9 @@
+#!/bin/sh
+# Build the guest-assistant frontend for production (output: guest-assistant/dist)
+
+# Stop on errors
+set -e
+
+cd "$(dirname "$0")/../.."
+
+./node_modules/.bin/gulp build-guest-assistant

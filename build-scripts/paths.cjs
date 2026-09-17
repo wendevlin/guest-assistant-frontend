@@ -49,6 +49,25 @@ module.exports = {
     "../landing-page/dist/static"
   ),
 
+  guestAssistant_dir: path.resolve(__dirname, "../guest-assistant"),
+  guestAssistant_build: path.resolve(__dirname, "../guest-assistant/build"),
+  guestAssistant_output_root: path.resolve(
+    __dirname,
+    "../guest-assistant/dist"
+  ),
+  guestAssistant_output_latest: path.resolve(
+    __dirname,
+    "../guest-assistant/dist/frontend_latest"
+  ),
+  guestAssistant_output_es5: path.resolve(
+    __dirname,
+    "../guest-assistant/dist/frontend_es5"
+  ),
+  guestAssistant_output_static: path.resolve(
+    __dirname,
+    "../guest-assistant/dist/static"
+  ),
+
   translations_src: path.resolve(__dirname, "../src/translations"),
 
   e2eTestApp_dir: path.resolve(__dirname, "../test/e2e/app"),

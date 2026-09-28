@@ -12119,21 +12119,16 @@
   "guest-assistant": {
     "login": {
       "title": "Welcome",
-      "subtitle": "Sign in to open your dashboard",
-      "username": "Username",
-      "password": "Password",
-      "sign_in": "Sign in",
-      "signing_in": "Signing in…",
-      "error_invalid": "Invalid username or password",
       "error_unavailable": "Your dashboard is currently not available. Please contact your host.",
       "error_generic": "Sign in failed, please try again"
     },
     "connecting": "Connecting to Home Assistant…",
-    "retry": "Try again",
-    "logout": {
-      "action": "Log out",
-      "confirm_title": "Log out",
-      "confirm_text": "Do you want to log out of the guest dashboard?"
-    }
+    "connection": {
+      "server": "The server is not reachable",
+      "home_assistant": "The server cannot reach Home Assistant",
+      "connection": "Connection lost",
+      "reconnecting": "Trying to reconnect automatically…"
+    },
+    "retry": "Try again"
   }
 }

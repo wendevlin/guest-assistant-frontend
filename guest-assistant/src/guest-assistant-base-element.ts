@@ -11,28 +11,45 @@ import { contextMixin } from "../../src/state/context-mixin";
 import { dialogManagerMixin } from "../../src/state/dialog-manager-mixin";
 import { HassBaseEl } from "../../src/state/hass-base-mixin";
 import MoreInfoMixin from "../../src/state/more-info-mixin";
+import NotificationMixin from "../../src/state/notification-mixin";
+import StateDisplayMixin from "../../src/state/state-display-mixin";
 import themesMixin from "../../src/state/themes-mixin";
-import type { Resources } from "../../src/types";
+import TranslationsMixin from "../../src/state/translations-mixin";
+import type { Constructor, Resources } from "../../src/types";
 import {
   getLocalLanguage,
   getTranslation,
 } from "../../src/util/common-translation";
 
+const ext = <T extends Constructor>(baseClass: T, mixins): T =>
+  mixins.reduceRight((base, mixin) => mixin(base), baseClass);
+
 /**
  * Base element for the guest app: the subset of the HA app mixins a guest
- * dashboard needs (connection, themes, more-info dialogs, dialog manager,
- * lit context) plus translation loading before a connection exists.
+ * dashboard needs, in the same order as `HassElement`. Translations (incl.
+ * backend translations for entity states and service errors), state
+ * formatting and toasts come from the regular HA mixins once connected.
  *
- * The guest-assistant translation fragment ships the base strings, the
- * lovelace panel strings and the `guest-assistant.*` strings in one file, so a
- * single `getTranslation(null, language)` covers everything.
+ * Before a connection exists (login screen) there is no `hass`, so this
+ * element keeps its own `localize` for the selected language. The
+ * guest-assistant translation fragment ships the base strings, the lovelace
+ * panel strings and the `guest-assistant.*` strings in one file, so a single
+ * `getTranslation(null, language)` covers everything.
  */
-export class GuestAssistantBaseElement extends dialogManagerMixin(
-  MoreInfoMixin(contextMixin(themesMixin(connectionMixin(HassBaseEl))))
-) {
+export class GuestAssistantBaseElement extends ext(HassBaseEl, [
+  themesMixin,
+  TranslationsMixin,
+  StateDisplayMixin,
+  MoreInfoMixin,
+  connectionMixin,
+  NotificationMixin,
+  dialogManagerMixin,
+  contextMixin,
+]) {
+  /** Localize for the screens shown before `hass` exists. */
   @property({ attribute: false }) public localize?: LocalizeFunc;
 
-  @property() public language?: string = getLocalLanguage();
+  @property() public language: string = getLocalLanguage();
 
   @state() private _resources?: Resources;
 
@@ -56,15 +73,15 @@ export class GuestAssistantBaseElement extends dialogManagerMixin(
     ) {
       this._setLocalize();
     }
+  }
 
-    // Once hass exists, all HA components localize through hass.localize.
-    if (
-      changedProperties.has("hass") &&
-      this.hass &&
-      this.localize &&
-      this.hass.localize !== this.localize
-    ) {
-      this._updateHass({ localize: this.localize });
+  protected updated(changedProperties: PropertyValues) {
+    super.updated(changedProperties);
+    // Like home-assistant.ts: pushes every new hass to the dialogs registered
+    // via provideHass (more-info etc.); without it they keep the hass object
+    // from when they were first opened.
+    if (changedProperties.has("hass") && this.hass) {
+      this.hassChanged(this.hass, changedProperties.get("hass"));
     }
   }
 
@@ -72,22 +89,27 @@ export class GuestAssistantBaseElement extends dialogManagerMixin(
     if (this._resources || !this.language) {
       return;
     }
-    const { data } = await getTranslation(null, this.language);
-    this._resources = { [this.language]: data };
+    const language = this.language;
+    const { data } = await getTranslation(null, language);
+    if (language === this.language) {
+      this._resources = { [language]: data };
+    }
   }
 
   private async _setLocalize() {
+    const language = this.language;
     const localize = await computeLocalize(
       this.constructor.prototype,
-      this.language!,
+      language,
       this._resources!
     );
-    this.localize = localize;
-    if (this.hass) {
-      this._updateHass({ localize });
+    if (language !== this.language) {
+      return;
     }
+    this.localize = localize;
+    document.querySelector("html")!.setAttribute("lang", language);
     computeDirectionStyles(
-      translationMetadata.translations[this.language!]?.isRTL ?? false,
+      translationMetadata.translations[language]?.isRTL ?? false,
       this
     );
   }

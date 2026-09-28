@@ -14,6 +14,8 @@ export interface HassToken {
   expires_in: number;
   /** url_path of the assigned dashboard, null for the default dashboard */
   dashboard_url_path: string | null;
+  /** The host lets the guest switch between auto, light and dark. */
+  theme_mode_selectable?: boolean;
 }
 
 export class GuestApiError extends Error {
@@ -79,4 +81,20 @@ export const getHassToken = async (): Promise<HassToken> => {
     // no JSON body
   }
   throw new GuestApiError(res.status, "Could not obtain a token", reasons);
+};
+
+export interface ProxyStatus {
+  home_assistant: "connected" | "disconnected";
+}
+
+/** Whether the proxy itself is reachable and connected to Home Assistant. */
+export const getProxyStatus = async (): Promise<ProxyStatus | null> => {
+  try {
+    const res = await request("/api/guest-assistant/status", {
+      cache: "no-store",
+    });
+    return res.ok ? ((await res.json()) as ProxyStatus) : null;
+  } catch {
+    return null;
+  }
 };

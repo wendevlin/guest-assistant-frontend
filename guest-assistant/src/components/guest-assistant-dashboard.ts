@@ -1,4 +1,4 @@
-import { mdiLogout } from "@mdi/js";
+import { mdiCog, mdiLogout } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators";
 import memoizeOne from "memoize-one";
@@ -9,6 +9,7 @@ import "../../../src/panels/lovelace/ha-panel-lovelace";
 import type { ExtraActionItem } from "../../../src/panels/lovelace/hui-root";
 import { haStyle } from "../../../src/resources/styles";
 import type { HomeAssistant, PanelInfo, Route } from "../../../src/types";
+import { showGuestSettingsDialog } from "../dialogs/show-dialog-guest-settings";
 
 /**
  * Renders the guest's dashboard with the regular lovelace panel. The proxy
@@ -28,6 +29,8 @@ export class GuestAssistantDashboard extends LitElement {
 
   @property({ attribute: false }) public dashboardUrlPath: string | null = null;
 
+  @property({ attribute: false }) public themeModeSelectable = false;
+
   private _panel = memoizeOne(
     (urlPath: string | null): PanelInfo<{ mode: "storage" }> => ({
       component_name: "lovelace",
@@ -41,8 +44,16 @@ export class GuestAssistantDashboard extends LitElement {
 
   private _actions: ExtraActionItem[] = [
     {
+      icon: mdiCog,
+      labelKey: "ui.dialogs.more_info_control.settings",
+      action: () =>
+        showGuestSettingsDialog(this, {
+          themeModeSelectable: this.themeModeSelectable,
+        }),
+    },
+    {
       icon: mdiLogout,
-      labelKey: "guest-assistant.logout.action",
+      labelKey: "ui.panel.profile.logout",
       action: () => this._confirmLogout(),
     },
   ];
@@ -72,9 +83,9 @@ export class GuestAssistantDashboard extends LitElement {
 
   private async _confirmLogout() {
     const confirmed = await showConfirmationDialog(this, {
-      title: this.hass!.localize("guest-assistant.logout.confirm_title"),
-      text: this.hass!.localize("guest-assistant.logout.confirm_text"),
-      confirmText: this.hass!.localize("guest-assistant.logout.action"),
+      title: this.hass!.localize("ui.panel.profile.logout_title"),
+      text: this.hass!.localize("ui.panel.profile.logout_text"),
+      confirmText: this.hass!.localize("ui.panel.profile.logout"),
       destructive: true,
     });
     if (confirmed) {

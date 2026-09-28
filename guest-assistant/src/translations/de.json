@@ -1,0 +1,17 @@
+{
+  "guest-assistant": {
+    "login": {
+      "title": "Willkommen",
+      "error_unavailable": "Dein Dashboard ist gerade nicht verfügbar. Bitte wende dich an deinen Gastgeber.",
+      "error_generic": "Anmeldung fehlgeschlagen, bitte versuche es erneut"
+    },
+    "connecting": "Verbinde mit Home Assistant…",
+    "connection": {
+      "server": "Der Server ist nicht erreichbar",
+      "home_assistant": "Der Server erreicht Home Assistant nicht",
+      "connection": "Verbindung unterbrochen",
+      "reconnecting": "Versuche automatisch, die Verbindung wiederherzustellen…"
+    },
+    "retry": "Erneut versuchen"
+  }
+}

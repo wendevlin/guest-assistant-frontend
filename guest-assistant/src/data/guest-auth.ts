@@ -1,5 +1,11 @@
 import type { Auth, AuthData } from "home-assistant-js-websocket";
-import { getHassToken, signOut, type HassToken } from "./guest-api";
+import { ERR_INVALID_AUTH } from "home-assistant-js-websocket";
+import {
+  getHassToken,
+  GuestApiError,
+  signOut,
+  type HassToken,
+} from "./guest-api";
 
 /**
  * `Auth` implementation for home-assistant-js-websocket backed by the
@@ -45,7 +51,23 @@ export class GuestAuth implements Auth {
   }
 
   async refreshAccessToken(): Promise<void> {
-    this._apply(await getHassToken());
+    let tokens: HassToken;
+    try {
+      tokens = await getHassToken();
+    } catch (err) {
+      // Session gone (401) or dashboard rejected (403): reconnecting cannot
+      // succeed. home-assistant-js-websocket stops retrying on
+      // ERR_INVALID_AUTH and the app reloads into the login / error view.
+      // Network errors keep the reconnect loop going.
+      if (
+        err instanceof GuestApiError &&
+        (err.status === 401 || err.status === 403)
+      ) {
+        throw ERR_INVALID_AUTH;
+      }
+      throw err;
+    }
+    this._apply(tokens);
   }
 
   async revoke(): Promise<void> {

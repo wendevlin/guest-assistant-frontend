@@ -1,20 +1,30 @@
 import type { Connection } from "home-assistant-js-websocket";
 import {
   createConnection,
+  ERR_CANNOT_CONNECT,
   ERR_INVALID_AUTH,
 } from "home-assistant-js-websocket";
 import { css, html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators";
+import { fireEvent } from "../../src/common/dom/fire_event";
 import { mainWindow } from "../../src/common/dom/get_main_window";
 import "../../src/components/ha-alert";
 import "../../src/components/ha-button";
 import "../../src/components/ha-spinner";
 import { haStyle } from "../../src/resources/styles";
 import type { Route } from "../../src/types";
+import "./components/guest-assistant-connection-banner";
+import type { ConnectionProblem } from "./components/guest-assistant-connection-banner";
 import "./components/guest-assistant-dashboard";
 import "./components/guest-assistant-login";
-import { getHassToken, getSession, GuestApiError } from "./data/guest-api";
+import {
+  getHassToken,
+  getProxyStatus,
+  getSession,
+  GuestApiError,
+} from "./data/guest-api";
 import { GuestAuth } from "./data/guest-auth";
+import { getGuestThemeMode, guestThemeModeToDark } from "./data/guest-theme";
 import { GuestAssistantBaseElement } from "./guest-assistant-base-element";
 
 /** Dialogs a guest must never be able to open, even via shortcuts. */
@@ -25,6 +35,17 @@ const BLOCKED_DIALOGS = new Set([
 ]);
 
 type GuestView = "loading" | "login" | "connecting" | "dashboard" | "error";
+
+/** Delay before the banner appears, so short reconnects stay invisible. */
+const PROBLEM_DELAY_MS = 1500;
+const RETRY_INTERVAL_MS = 5000;
+
+/** Errors that mean "try again later" rather than "this will never work". */
+const isConnectivityError = (err: unknown) =>
+  err === ERR_CANNOT_CONNECT ||
+  // fetch() rejects with a TypeError when the server is unreachable
+  err instanceof TypeError ||
+  (err instanceof GuestApiError && err.status >= 500);
 
 @customElement("ha-guest-assistant")
 export class HaGuestAssistant extends GuestAssistantBaseElement {
@@ -40,6 +61,15 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
 
   /** url_path of the assigned dashboard, null for the default dashboard */
   @state() private _dashboardUrlPath: string | null = null;
+
+  @state() private _problem?: ConnectionProblem;
+
+  /** The host lets the guest switch between auto, light and dark. */
+  @state() private _themeModeSelectable = false;
+
+  private _problemTimer?: number;
+
+  private _retryTimer?: number;
 
   private _connection?: Connection;
 
@@ -62,6 +92,14 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     );
 
     this.addEventListener("guest-logout", () => this._logout());
+    this.addEventListener("guest-language-changed", (ev) =>
+      this._setLoginLanguage((ev as CustomEvent<string>).detail)
+    );
+    // Language picked in the settings dialog: TranslationsMixin switches
+    // hass; keep the login screen in the same language after a logout.
+    this.addEventListener("hass-language-select", (ev) => {
+      this.language = (ev as CustomEvent<string>).detail;
+    });
 
     this._updateNarrow();
     window.addEventListener("resize", () => this._updateNarrow());
@@ -72,6 +110,28 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     this._restoreSession();
   }
 
+  protected updated(changedProps: PropertyValues): void {
+    super.updated(changedProps);
+    if (changedProps.has("hass")) {
+      this._applyGuestThemeMode();
+    }
+  }
+
+  /**
+   * The proxy answers the theme preferences from config.yaml. When the host
+   * allows it, the guest's own light/dark choice on this device wins.
+   */
+  private _applyGuestThemeMode() {
+    const mode = getGuestThemeMode();
+    if (!this._themeModeSelectable || !mode || !this.hass?.themes) {
+      return;
+    }
+    const dark = guestThemeModeToDark(mode);
+    if (this.hass.selectedTheme?.dark !== dark) {
+      fireEvent(this, "settheme", { dark });
+    }
+  }
+
   protected willUpdate(changedProps: PropertyValues): void {
     super.willUpdate(changedProps);
     if (changedProps.has("_dashboardUrlPath")) {
@@ -80,6 +140,14 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   }
 
   protected render() {
+    return html`${this._renderView()}
+      <guest-assistant-connection-banner
+        .localize=${this.hass?.localize ?? this.localize}
+        .problem=${this._problem}
+      ></guest-assistant-connection-banner>`;
+  }
+
+  private _renderView() {
     switch (this._view) {
       case "loading":
       case "connecting":
@@ -110,6 +178,7 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
         return html`
           <guest-assistant-login
             .localize=${this.localize}
+            .language=${this.language}
             @authenticated=${this._connect}
           ></guest-assistant-login>
         `;
@@ -120,6 +189,7 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
             .narrow=${this._narrow}
             .route=${this._route}
             .dashboardUrlPath=${this._dashboardUrlPath}
+            .themeModeSelectable=${this._themeModeSelectable}
           ></guest-assistant-dashboard>
         `;
     }
@@ -140,8 +210,23 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   }
 
   private async _restoreSession() {
-    const session = await getSession().catch(() => null);
+    let session: Awaited<ReturnType<typeof getSession>>;
+    try {
+      session = await getSession();
+    } catch (err) {
+      if (isConnectivityError(err)) {
+        this._startProblemCheck();
+        clearTimeout(this._retryTimer);
+        this._retryTimer = window.setTimeout(
+          () => this._restoreSession(),
+          RETRY_INTERVAL_MS
+        );
+        return;
+      }
+      session = null;
+    }
     if (!session) {
+      this._clearProblem();
       this._view = "login";
       return;
     }
@@ -149,7 +234,70 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     await this._connect();
   }
 
+  /** Language picked on the login screen, before `hass` exists. */
+  private _setLoginLanguage(language: string) {
+    this.language = language;
+    try {
+      window.localStorage.setItem("selectedLanguage", JSON.stringify(language));
+    } catch {
+      // storage unavailable (private mode); the choice lasts for this page
+    }
+  }
+
+  protected hassDisconnected() {
+    super.hassDisconnected();
+    // Closing the connection on logout also ends up here.
+    if (this._connection) {
+      this._startProblemCheck();
+    }
+  }
+
+  protected hassReconnected() {
+    super.hassReconnected();
+    this._clearProblem();
+  }
+
+  /**
+   * Shows the banner after a short delay and keeps it up to date while the
+   * connection is down: asks the proxy whether it is reachable and whether it
+   * is connected to Home Assistant.
+   */
+  private _startProblemCheck() {
+    if (this._problemTimer) {
+      return;
+    }
+    const check = async () => {
+      const status = await getProxyStatus();
+      if (!this._problemTimer) {
+        return; // reconnected meanwhile
+      }
+      this._problem = !status
+        ? "server"
+        : status.home_assistant === "disconnected"
+          ? "home-assistant"
+          : "connection";
+      this._problemTimer = window.setTimeout(check, RETRY_INTERVAL_MS);
+    };
+    this._problemTimer = window.setTimeout(check, PROBLEM_DELAY_MS);
+  }
+
+  private _clearProblem() {
+    clearTimeout(this._problemTimer);
+    this._problemTimer = undefined;
+    this._problem = undefined;
+  }
+
+  private _scheduleRetry() {
+    clearTimeout(this._retryTimer);
+    this._retryTimer = window.setTimeout(() => {
+      this._retryTimer = undefined;
+      this._connect();
+    }, RETRY_INTERVAL_MS);
+  }
+
   private async _connect() {
+    clearTimeout(this._retryTimer);
+    this._retryTimer = undefined;
     this._view = "connecting";
     this._errorMessage = undefined;
     this._errorReasons = [];
@@ -163,6 +311,7 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
         this._userName = session.user.name || "Guest";
       }
       this._dashboardUrlPath = tokens.dashboard_url_path;
+      this._themeModeSelectable = tokens.theme_mode_selectable === true;
 
       this._auth = new GuestAuth(window.location.origin, tokens);
       try {
@@ -191,10 +340,22 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
         enableShortcuts: false,
       });
 
+      this._clearProblem();
       this._view = "dashboard";
     } catch (err: any) {
       this._teardownConnection();
-      if (err instanceof GuestApiError && err.status === 401) {
+      if (isConnectivityError(err)) {
+        // Server or Home Assistant down: keep the spinner, explain why in the
+        // banner and try again.
+        this._startProblemCheck();
+        this._scheduleRetry();
+        return;
+      }
+      this._clearProblem();
+      if (
+        err === ERR_INVALID_AUTH ||
+        (err instanceof GuestApiError && err.status === 401)
+      ) {
         this._view = "login";
         return;
       }
@@ -213,6 +374,8 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   }
 
   private _teardownConnection() {
+    clearTimeout(this._retryTimer);
+    this._retryTimer = undefined;
     this._connection?.close();
     this._connection = undefined;
     this._auth = undefined;
@@ -226,6 +389,7 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
       // ignore, the session may already be gone
     }
     this._teardownConnection();
+    this._clearProblem();
     this._errorMessage = undefined;
     this._errorReasons = [];
     this._view = "login";

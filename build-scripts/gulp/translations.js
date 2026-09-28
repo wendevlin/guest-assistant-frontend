@@ -18,6 +18,12 @@ const workDir = "build/translations";
 const outDir = join(workDir, "output");
 const EN_SRC = join(paths.translations_src, "en.json");
 const TEST_LOCALE = "en-x-test";
+// The Guest Assistant's own strings are not on Lokalise; their non-English
+// translations live next to its source.
+const GUEST_ASSISTANT_TRANSLATIONS = join(
+  paths.root_dir,
+  "guest-assistant/src/translations"
+);
 
 let mergeBackend = false;
 
@@ -224,13 +230,18 @@ const createTranslations = async () => {
               return [flatten(data["landing-page"]), ""];
             case "guest-assistant":
               // Guest Assistant ships one file per locale: the base
-              // translations, the lovelace panel and its own top-level key.
+              // translations, the panels whose strings it reuses (lovelace,
+              // login page, profile) and its own top-level key.
               return [
                 flatten({
                   ...data,
                   ui: {
                     ...data.ui,
-                    panel: { lovelace: data.ui.panel.lovelace },
+                    panel: {
+                      lovelace: data.ui.panel.lovelace,
+                      "page-authorize": data.ui.panel["page-authorize"],
+                      profile: data.ui.panel.profile,
+                    },
                   },
                   "landing-page": undefined,
                 }),
@@ -273,6 +284,9 @@ const createTranslations = async () => {
         mergeFiles.push(`${inFrontendDir}/${lang}.json`);
         if (mergeBackend) {
           mergeFiles.push(`${inBackendDir}/${lang}.json`);
+        }
+        if (FRAGMENTS[0] === "guest-assistant") {
+          mergeFiles.push(`${GUEST_ASSISTANT_TRANSLATIONS}/${lang}.json`);
         }
       }
     }

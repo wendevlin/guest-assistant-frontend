@@ -29,8 +29,6 @@ export class GuestAssistantDashboard extends LitElement {
 
   @property({ attribute: false }) public dashboardUrlPath: string | null = null;
 
-  @property({ attribute: false }) public themeModeSelectable = false;
-
   private _panel = memoizeOne(
     (urlPath: string | null): PanelInfo<{ mode: "storage" }> => ({
       component_name: "lovelace",
@@ -46,10 +44,7 @@ export class GuestAssistantDashboard extends LitElement {
     {
       icon: mdiCog,
       labelKey: "ui.dialogs.more_info_control.settings",
-      action: () =>
-        showGuestSettingsDialog(this, {
-          themeModeSelectable: this.themeModeSelectable,
-        }),
+      action: () => showGuestSettingsDialog(this),
     },
     {
       icon: mdiLogout,

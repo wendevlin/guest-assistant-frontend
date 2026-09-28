@@ -14,8 +14,6 @@ export interface HassToken {
   expires_in: number;
   /** url_path of the assigned dashboard, null for the default dashboard */
   dashboard_url_path: string | null;
-  /** The host lets the guest switch between auto, light and dark. */
-  theme_mode_selectable?: boolean;
 }
 
 export class GuestApiError extends Error {

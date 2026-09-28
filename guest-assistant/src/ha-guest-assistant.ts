@@ -6,7 +6,6 @@ import {
 } from "home-assistant-js-websocket";
 import { css, html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators";
-import { fireEvent } from "../../src/common/dom/fire_event";
 import { mainWindow } from "../../src/common/dom/get_main_window";
 import "../../src/components/ha-alert";
 import "../../src/components/ha-button";
@@ -24,7 +23,6 @@ import {
   GuestApiError,
 } from "./data/guest-api";
 import { GuestAuth } from "./data/guest-auth";
-import { getGuestThemeMode, guestThemeModeToDark } from "./data/guest-theme";
 import { GuestAssistantBaseElement } from "./guest-assistant-base-element";
 
 /** Dialogs a guest must never be able to open, even via shortcuts. */
@@ -63,9 +61,6 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   @state() private _dashboardUrlPath: string | null = null;
 
   @state() private _problem?: ConnectionProblem;
-
-  /** The host lets the guest switch between auto, light and dark. */
-  @state() private _themeModeSelectable = false;
 
   private _problemTimer?: number;
 
@@ -108,28 +103,6 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     this._updateRoute();
 
     this._restoreSession();
-  }
-
-  protected updated(changedProps: PropertyValues): void {
-    super.updated(changedProps);
-    if (changedProps.has("hass")) {
-      this._applyGuestThemeMode();
-    }
-  }
-
-  /**
-   * The proxy answers the theme preferences from config.yaml. When the host
-   * allows it, the guest's own light/dark choice on this device wins.
-   */
-  private _applyGuestThemeMode() {
-    const mode = getGuestThemeMode();
-    if (!this._themeModeSelectable || !mode || !this.hass?.themes) {
-      return;
-    }
-    const dark = guestThemeModeToDark(mode);
-    if (this.hass.selectedTheme?.dark !== dark) {
-      fireEvent(this, "settheme", { dark });
-    }
   }
 
   protected willUpdate(changedProps: PropertyValues): void {
@@ -189,7 +162,6 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
             .narrow=${this._narrow}
             .route=${this._route}
             .dashboardUrlPath=${this._dashboardUrlPath}
-            .themeModeSelectable=${this._themeModeSelectable}
           ></guest-assistant-dashboard>
         `;
     }
@@ -311,7 +283,6 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
         this._userName = session.user.name || "Guest";
       }
       this._dashboardUrlPath = tokens.dashboard_url_path;
-      this._themeModeSelectable = tokens.theme_mode_selectable === true;
 
       this._auth = new GuestAuth(window.location.origin, tokens);
       try {

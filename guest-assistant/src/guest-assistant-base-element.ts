@@ -6,6 +6,7 @@ import {
 } from "../../src/common/translations/localize";
 import { computeDirectionStyles } from "../../src/common/util/compute_rtl";
 import { translationMetadata } from "../../src/resources/translations-metadata";
+import ActionMixin from "../../src/state/action-mixin";
 import { connectionMixin } from "../../src/state/connection-mixin";
 import { contextMixin } from "../../src/state/context-mixin";
 import { dialogManagerMixin } from "../../src/state/dialog-manager-mixin";
@@ -41,6 +42,9 @@ export class GuestAssistantBaseElement extends ext(HassBaseEl, [
   TranslationsMixin,
   StateDisplayMixin,
   MoreInfoMixin,
+  // Card taps (more-info, toggle, navigate, perform-action) arrive as
+  // hass-action events and are only handled by this mixin.
+  ActionMixin,
   connectionMixin,
   NotificationMixin,
   dialogManagerMixin,

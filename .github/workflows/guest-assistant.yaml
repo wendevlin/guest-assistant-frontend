@@ -1,0 +1,51 @@
+name: Guest Assistant frontend
+
+# Builds the guest frontend (guest-assistant/dist) and publishes it as a
+# release asset. The Guest Assistant app image downloads it from there.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - guest-assistant
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guest-assistant-frontend
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out files from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Node and install
+        uses: ./.github/actions/setup
+      - name: Build the guest frontend
+        uses: ./.github/actions/build
+        with:
+          target: build-guest-assistant
+          # Lets the build fetch HA's nightly translations without a Lokalise token.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack
+        run: tar -C guest-assistant/dist -czf guest-assistant-frontend.tar.gz .
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          tag="$(date -u +%Y.%m.%d)-${SHA::9}"
+          gh release create "$tag" guest-assistant-frontend.tar.gz \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --title "Guest frontend $tag" \
+            --notes "Guest Assistant frontend built from $SHA." \
+            --latest

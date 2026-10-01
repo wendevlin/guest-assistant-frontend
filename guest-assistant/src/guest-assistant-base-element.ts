@@ -79,6 +79,16 @@ export class GuestAssistantBaseElement extends ext(HassBaseEl, [
     }
   }
 
+  protected hassConnected() {
+    super.hassConnected();
+    // Like home-assistant.ts: entity states ("On", "Off") and entity names
+    // come from these backend translations.
+    // @ts-ignore private in TranslationsMixin
+    this._loadHassTranslations(this.hass!.language, "entity_component");
+    // @ts-ignore private in TranslationsMixin
+    this._loadHassTranslations(this.hass!.language, "entity");
+  }
+
   protected updated(changedProperties: PropertyValues) {
     super.updated(changedProperties);
     // Like home-assistant.ts: pushes every new hass to the dialogs registered

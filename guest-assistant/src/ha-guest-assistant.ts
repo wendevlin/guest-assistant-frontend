@@ -37,6 +37,12 @@ type GuestView = "loading" | "login" | "connecting" | "dashboard" | "error";
 /** Delay before the banner appears, so short reconnects stay invisible. */
 const PROBLEM_DELAY_MS = 1500;
 const RETRY_INTERVAL_MS = 5000;
+/**
+ * How long the dashboard may wait for the core config and themes after
+ * connecting. They come from subscriptions without error handling, so a
+ * command the proxy denies would otherwise leave the spinner up forever.
+ */
+const LOAD_TIMEOUT_MS = 25000;
 
 /** Errors that mean "try again later" rather than "this will never work". */
 const isConnectivityError = (err: unknown) =>
@@ -65,6 +71,8 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   private _problemTimer?: number;
 
   private _retryTimer?: number;
+
+  private _loadTimer?: number;
 
   private _connection?: Connection;
 
@@ -109,6 +117,9 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     super.willUpdate(changedProps);
     if (changedProps.has("_dashboardUrlPath")) {
       this._updateRoute();
+    }
+    if (this._loadTimer && this.hass?.config && this.hass.themes) {
+      this._clearLoadWatchdog();
     }
   }
 
@@ -313,6 +324,7 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
 
       this._clearProblem();
       this._view = "dashboard";
+      this._startLoadWatchdog();
     } catch (err: any) {
       this._teardownConnection();
       if (isConnectivityError(err)) {
@@ -344,9 +356,39 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     }
   }
 
+  /**
+   * Shows the error view if the dashboard still has no config or themes after
+   * LOAD_TIMEOUT_MS. While the connection is down the banner already explains
+   * the wait and reconnecting resumes loading, so the check starts over.
+   */
+  private _startLoadWatchdog() {
+    this._clearLoadWatchdog();
+    this._loadTimer = window.setTimeout(() => {
+      this._loadTimer = undefined;
+      if (this.hass?.config && this.hass.themes) {
+        return;
+      }
+      if (this.hass && !this.hass.connected) {
+        this._startLoadWatchdog();
+        return;
+      }
+      this._teardownConnection();
+      this._clearProblem();
+      this._errorMessage = this.localize?.("guest-assistant.load_failed");
+      this._errorReasons = [];
+      this._view = "error";
+    }, LOAD_TIMEOUT_MS);
+  }
+
+  private _clearLoadWatchdog() {
+    clearTimeout(this._loadTimer);
+    this._loadTimer = undefined;
+  }
+
   private _teardownConnection() {
     clearTimeout(this._retryTimer);
     this._retryTimer = undefined;
+    this._clearLoadWatchdog();
     this._connection?.close();
     this._connection = undefined;
     this._auth = undefined;

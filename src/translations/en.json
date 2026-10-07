@@ -12123,6 +12123,7 @@
       "error_generic": "Sign in failed, please try again"
     },
     "connecting": "Connecting to Home Assistant…",
+    "load_failed": "Your dashboard could not be loaded. Please try again or contact your host.",
     "connection": {
       "server": "The server is not reachable",
       "home_assistant": "The server cannot reach Home Assistant",

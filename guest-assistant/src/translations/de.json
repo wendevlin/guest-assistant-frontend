@@ -6,6 +6,7 @@
       "error_generic": "Anmeldung fehlgeschlagen, bitte versuche es erneut"
     },
     "connecting": "Verbinde mit Home Assistant…",
+    "load_failed": "Dein Dashboard konnte nicht geladen werden. Bitte versuche es erneut oder wende dich an deinen Gastgeber.",
     "connection": {
       "server": "Der Server ist nicht erreichbar",
       "home_assistant": "Der Server erreicht Home Assistant nicht",

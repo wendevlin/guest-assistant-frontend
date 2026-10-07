@@ -32,9 +32,11 @@ are plain `fetch` requests.
 guest-assistant/script/develop
 ```
 
-This builds into `guest-assistant/dist` and rebuilds on changes. Point the
-proxy at that directory (`frontend_development_repo` in the proxy's
-`config.yaml`) and open the proxy URL, e.g. http://localhost:3001.
+This builds into `guest-assistant/dist` and rebuilds on changes. Start the
+proxy with the environment variable `GUEST_ASSISTANT_FRONTEND_REPO` set to the
+root of this repository (for example in the proxy's `.env`, see its
+`.env.example`); the proxy then serves `guest-assistant/dist` from here. Open
+the proxy URL, for example http://localhost:3001.
 
 ## Build
 
@@ -42,8 +44,10 @@ proxy at that directory (`frontend_development_repo` in the proxy's
 guest-assistant/script/build_guest_assistant
 ```
 
-The production build lands in `guest-assistant/dist`; copy it to the proxy's
-`public/` directory or reference it via `frontend_development_repo`.
+The production build lands in `guest-assistant/dist`. The proxy serves it via
+`GUEST_ASSISTANT_FRONTEND_REPO` as above; without that variable it serves its
+own `./public` directory instead, so copying the contents of
+`guest-assistant/dist` there works too.
 
 ## Translations
 

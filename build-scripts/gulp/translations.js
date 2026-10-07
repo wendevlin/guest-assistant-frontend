@@ -222,6 +222,7 @@ const createTranslations = async () => {
                   ...data,
                   ui: { ...data.ui, panel: undefined },
                   "landing-page": undefined,
+                  "guest-assistant": undefined,
                 }),
                 "",
               ];

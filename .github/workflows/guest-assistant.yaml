@@ -1,7 +1,8 @@
 name: Guest Assistant frontend
 
 # Builds the guest frontend (guest-assistant/dist) and publishes it as a
-# release asset. The Guest Assistant app image downloads it from there.
+# release asset, together with its SHA-256 checksum. The Guest Assistant app
+# image downloads it from there.
 
 on:
   workflow_dispatch:
@@ -36,14 +37,18 @@ jobs:
           # Lets the build fetch HA's nightly translations without a Lokalise token.
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Pack
-        run: tar -C guest-assistant/dist -czf guest-assistant-frontend.tar.gz .
+        run: |
+          tar -C guest-assistant/dist -czf guest-assistant-frontend.tar.gz .
+          sha256sum guest-assistant-frontend.tar.gz > guest-assistant-frontend.tar.gz.sha256
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ github.sha }}
         run: |
           tag="$(date -u +%Y.%m.%d)-${SHA::9}"
-          gh release create "$tag" guest-assistant-frontend.tar.gz \
+          gh release create "$tag" \
+            guest-assistant-frontend.tar.gz \
+            guest-assistant-frontend.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --target "$SHA" \
             --title "Guest frontend $tag" \

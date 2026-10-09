@@ -36,7 +36,7 @@ This builds into `guest-assistant/dist` and rebuilds on changes. Start the
 proxy with the environment variable `GUEST_ASSISTANT_FRONTEND_REPO` set to the
 root of this repository (for example in the proxy's `.env`, see its
 `.env.example`); the proxy then serves `guest-assistant/dist` from here. Open
-the proxy URL, for example http://localhost:3001.
+the proxy URL, for example http://localhost:3123.
 
 ## Build
 

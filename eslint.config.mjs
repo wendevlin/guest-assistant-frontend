@@ -278,7 +278,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/entrypoints/service-worker.ts"],
+    files: ["src/entrypoints/service-worker.ts", "guest-assistant/src/sw.js"],
     languageOptions: {
       globals: globals.serviceworker,
     },

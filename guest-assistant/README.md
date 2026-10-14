@@ -49,6 +49,44 @@ The production build lands in `guest-assistant/dist`. The proxy serves it via
 own `./public` directory instead, so copying the contents of
 `guest-assistant/dist` there works too.
 
+## Installable app and updates
+
+The guest page is a progressive web app that guests can add to their home
+screen. The proxy sets the name under the icon (admin page → App name) in
+`/manifest.json` and the page title; everything else comes from this build:
+
+- `public/manifest.json`: copied to the root of the build. The shared header
+  already links `/manifest.json`.
+- `public/static/icons/`: the Guest Assistant icon (`guest-icon.svg`, the
+  admin page's `admin-ui/public/icon.svg` of the proxy) and PNGs rendered from
+  it. `favicon.ico` replaces Home Assistant's in the build, because
+  `public/static` is copied over the app's static files.
+- `src/sw.js`: the service worker, copied to `/sw.js` as it is (plain ES2017,
+  no build step). It only stores the page for when the proxy is out of reach
+  and asks the network first otherwise; bundles are left to the HTTP cache.
+- `src/data/guest-update.ts`: keeps the page on the build the proxy serves.
+  Every production build gets an id (`GUEST_ASSISTANT_BUILD`, the release tag
+  in CI, `local-<commit>-<time>` otherwise), compiled into the bundle and
+  written to `build.json`. The app compares both when it starts, comes back to
+  the foreground and after every reconnect, and reloads with `reloadFresh()`
+  when they differ. The settings dialog shows the id.
+- `src/html/index.html.template`: icons and iOS meta tags, plus the boot guard
+  (`src/html/_bootstrap_recovery.html.template`) with a launch screen for it,
+  which reloads once when the page's entry bundles are gone.
+
+To switch the service worker off, stop registering it
+(`registerGuestServiceWorker()`) and leave `sw.js` out of the build: browsers
+keep an installed worker whose script is gone, so the proxy then serves one
+that removes itself and its cache. The caching rules for the build's files
+are in the proxy (`src/csp.ts` there).
+
+To render the PNGs again after the icon changed, open the SVG in a browser
+at the target size: `guest-icon-{192,512}.png` transparent and
+`guest-maskable-{192,512}.png` on white with the house at 60 % of the size
+(launchers cut the icon to a circle of 80 %), `guest-apple-touch-icon.png`
+(180 px) on white at 78 %, and `favicon.ico` from 16, 32 and 48 px renders
+(`convert favicon-16.png favicon-32.png favicon-48.png favicon.ico`).
+
 ## Translations
 
 Strings live under the top-level `guest-assistant` key in

@@ -9,7 +9,8 @@ import type { HomeAssistant } from "../../../src/types";
 /**
  * Settings a guest may change on their own device. The look always follows
  * Home Assistant (default theme, dashboard and view themes), so only the
- * language is offered; it is stored in the browser.
+ * language is offered; it is stored in the browser. Also shows the version of
+ * the app, to tell whether an update has arrived.
  *
  * Uses the adaptive dialog: a dialog on large screens, a bottom sheet on
  * phones.
@@ -50,6 +51,12 @@ export class DialogGuestSettings extends LitElement {
             @value-changed=${this._languageChanged}
           ></ha-language-picker>
         </ha-settings-row>
+        <ha-settings-row>
+          <span slot="heading">
+            ${this.hass.localize("guest-assistant.settings.version")}
+          </span>
+          <span class="version">${__GUEST_ASSISTANT_BUILD__}</span>
+        </ha-settings-row>
       </ha-adaptive-dialog>
     `;
   }
@@ -73,6 +80,10 @@ export class DialogGuestSettings extends LitElement {
     }
     ha-language-picker {
       min-width: 240px;
+    }
+    .version {
+      direction: ltr;
+      color: var(--secondary-text-color);
     }
     @media (max-width: 600px) {
       ha-settings-row {

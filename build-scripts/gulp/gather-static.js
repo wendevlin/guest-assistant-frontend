@@ -191,6 +191,12 @@ gulp.task("copy-static-guest-assistant", async () => {
     path.resolve(paths.guestAssistant_dir, "public"),
     paths.guestAssistant_output_root
   );
+  // The service worker is plain JS that runs as it is; it lives in src/ so
+  // it is linted with the rest.
+  fs.copySync(
+    path.resolve(paths.guestAssistant_dir, "src/sw.js"),
+    path.resolve(paths.guestAssistant_output_root, "sw.js")
+  );
 
   await copyMapPanel(paths.guestAssistant_output_static);
   copyFonts(paths.guestAssistant_output_static);

@@ -16,12 +16,24 @@ export interface HassToken {
   dashboard_url_path: string | null;
 }
 
+/** Name and dashboard of the signed-in guest. */
+export interface GuestInfo {
+  name: string;
+  /** url_path of the assigned dashboard, null for the default dashboard */
+  dashboard_url_path: string | null;
+}
+
 export class GuestApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
     /** Reasons the proxy rejected the dashboard (403 on hass-token). */
-    public readonly reasons: string[] = []
+    public readonly reasons: string[] = [],
+    /**
+     * Why the companion app sign-in failed (`errors.base` of the login
+     * flow): invalid_auth, guest_disabled or dashboard_unavailable.
+     */
+    public readonly base?: string
   ) {
     super(message);
   }
@@ -79,6 +91,57 @@ export const getHassToken = async (): Promise<HassToken> => {
     // no JSON body
   }
   throw new GuestApiError(res.status, "Could not obtain a token", reasons);
+};
+
+/**
+ * Name and dashboard of the guest a token belongs to. In the companion app
+ * the page has no session cookie, only the token the app hands it.
+ */
+export const getGuestInfo = async (
+  accessToken: string
+): Promise<GuestInfo | null> => {
+  const res = await request("/api/guest-assistant/session", {
+    headers: { authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  return res.ok ? ((await res.json()) as GuestInfo) : null;
+};
+
+/**
+ * Signs a guest in for the companion app (authorize page). Returns the
+ * authorization code the app exchanges for its tokens.
+ */
+export const loginFlow = async (
+  clientId: string,
+  redirectUri: string,
+  username: string,
+  password: string
+): Promise<string> => {
+  const res = await request("/auth/login_flow", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      username,
+      password,
+    }),
+  });
+  let body: { type?: string; result?: unknown; errors?: { base?: string } } =
+    {};
+  try {
+    body = await res.json();
+  } catch {
+    // no JSON body
+  }
+  if (
+    res.ok &&
+    body.type === "create_entry" &&
+    typeof body.result === "string"
+  ) {
+    return body.result;
+  }
+  throw new GuestApiError(res.status, "Sign in failed", [], body.errors?.base);
 };
 
 export interface ProxyStatus {

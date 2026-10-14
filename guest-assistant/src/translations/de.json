@@ -16,6 +16,13 @@
     "retry": "Erneut versuchen",
     "settings": {
       "version": "Version"
-    }
+    },
+    "authorize": {
+      "invalid": "Diese Seite meldet dich in der Home Assistant App an. Öffne sie aus der App."
+    },
+    "external": {
+      "auth_failed": "Die Home Assistant App konnte dich nicht anmelden. Versuche es erneut oder melde dich in der App neu an."
+    },
+    "signed_out": "Du bist abgemeldet."
   }
 }

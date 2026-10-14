@@ -30,7 +30,7 @@ const BUST_PARAM = "ha_cache_bust";
 
 // Served by the proxy itself (see RESERVED_PREFIXES in its server.ts), never
 // the guest app.
-const OTHER_PREFIXES = ["/api/", "/static/", "/local/", "/admin/"];
+const OTHER_PREFIXES = ["/api/", "/auth/", "/static/", "/local/", "/admin/"];
 
 const isAppPage = (url) =>
   url.origin === self.location.origin &&

@@ -7,12 +7,13 @@ import {
 import { css, html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators";
 import { mainWindow } from "../../src/common/dom/get_main_window";
-import { replaceCurrentUrl } from "../../src/common/navigate";
+import { navigate, replaceCurrentUrl } from "../../src/common/navigate";
 import "../../src/components/ha-alert";
 import "../../src/components/ha-button";
 import "../../src/components/ha-spinner";
 import { haStyle } from "../../src/resources/styles";
 import type { Route } from "../../src/types";
+import type { ExternalAuth } from "../../src/external_app/external_auth";
 import { removeLaunchScreen } from "../../src/util/launch-screen";
 import { recoverFromStaleBuild } from "../../src/util/recover-stale-build";
 import "./components/guest-assistant-connection-banner";
@@ -20,12 +21,18 @@ import type { ConnectionProblem } from "./components/guest-assistant-connection-
 import "./components/guest-assistant-dashboard";
 import "./components/guest-assistant-login";
 import {
+  getGuestInfo,
   getHassToken,
   getProxyStatus,
   getSession,
   GuestApiError,
 } from "./data/guest-api";
 import { GuestAuth } from "./data/guest-auth";
+import {
+  handleExternalCommand,
+  hasExternalBridge,
+  loadExternalAuth,
+} from "./data/guest-external";
 import {
   GuestUpdateChecker,
   registerGuestServiceWorker,
@@ -40,7 +47,8 @@ const BLOCKED_DIALOGS = new Set([
   "dialog-shortcuts",
 ]);
 
-type GuestView = "loading" | "login" | "connecting" | "dashboard" | "error";
+type GuestView =
+  "loading" | "login" | "connecting" | "dashboard" | "error" | "signed-out";
 
 /** Delay before the banner appears, so short reconnects stay invisible. */
 const PROBLEM_DELAY_MS = 1500;
@@ -92,7 +100,20 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
 
   private _connection?: Connection;
 
-  private _auth?: GuestAuth;
+  private _auth?: GuestAuth | ExternalAuth;
+
+  /**
+   * Running in the Home Assistant companion app: the app signs the guest in
+   * and hands over its tokens (see data/guest-external.ts), there is no
+   * cookie session and no login form.
+   */
+  private _external = hasExternalBridge();
+
+  /** The app's auth and message bus; created once, kept across reconnects. */
+  private _externalAuth?: ExternalAuth;
+
+  /** `frontend/loaded` was sent: the app may take down its splash screen. */
+  private _loadedSent = false;
 
   private _userName = "Guest";
 
@@ -105,8 +126,12 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     super.firstUpdated(changedProps);
 
     // The app runs: from here on it handles failures itself, the boot guard
-    // in index.html only covers the entry bundles.
-    removeLaunchScreen();
+    // in index.html only covers the entry bundles. In the companion app the
+    // launch screen goes once the app's config says whether it covers the
+    // page with its own splash screen.
+    if (!this._external) {
+      removeLaunchScreen();
+    }
     this._removeCacheBust();
     this._watchForUpdates();
 
@@ -150,6 +175,11 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     }
   }
 
+  protected updated(changedProps: PropertyValues): void {
+    super.updated(changedProps);
+    this._maybeSendLoaded();
+  }
+
   protected render() {
     return html`${this._renderView()}
       <guest-assistant-connection-banner
@@ -180,9 +210,18 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
                   : nothing
               }
             </ha-alert>
-            <ha-button appearance="filled" @click=${this._logout}>
+            <ha-button
+              appearance="filled"
+              @click=${this._external ? this._connect : this._logout}
+            >
               ${this.localize?.("guest-assistant.retry") ?? "Try again"}
             </ha-button>
+          </div>
+        `;
+      case "signed-out":
+        return html`
+          <div class="centered">
+            <p>${this.localize?.("guest-assistant.signed_out") ?? nothing}</p>
           </div>
         `;
       case "login":
@@ -220,6 +259,10 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   }
 
   private async _restoreSession() {
+    if (this._external) {
+      await this._connect();
+      return;
+    }
     let session: Awaited<ReturnType<typeof getSession>>;
     try {
       session = await getSession();
@@ -281,7 +324,10 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
    * Registered once, so it also covers the login screen.
    */
   private _watchForUpdates() {
-    registerGuestServiceWorker();
+    // The companion app has its own offline handling and splash screen.
+    if (!this._external) {
+      registerGuestServiceWorker();
+    }
     this._checkForUpdate();
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
@@ -396,27 +442,13 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     this._errorReasons = [];
 
     try {
-      const [session, tokens] = await Promise.all([
-        getSession().catch(() => null),
-        getHassToken(),
-      ]);
-      if (session) {
-        this._userName = session.user.name || "Guest";
-      }
-      this._dashboardUrlPath = tokens.dashboard_url_path;
-
-      this._auth = new GuestAuth(window.location.origin, tokens);
-      try {
-        this._connection = await createConnection({ auth: this._auth });
-      } catch (err) {
-        if (err !== ERR_INVALID_AUTH) {
-          throw err;
-        }
-        await this._auth.refreshAccessToken();
-        this._connection = await createConnection({ auth: this._auth });
+      if (this._external) {
+        await this._connectExternal();
+      } else {
+        await this._connectWithSession();
       }
 
-      this.initializeHass(this._auth, this._connection);
+      this.initializeHass(this._auth!, this._connection!);
       // Guests are never admins; kiosk mode hides search, edit and the
       // sidebar toggle. Shortcuts stay off so nothing opens by keyboard.
       this._updateHass({
@@ -445,6 +477,15 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
         return;
       }
       this._clearProblem();
+      if (this._external) {
+        // There is no login form in the app: it signs the guest in itself.
+        this._errorMessage = this.localize?.(
+          "guest-assistant.external.auth_failed"
+        );
+        this._errorReasons = [];
+        this._view = "error";
+        return;
+      }
       if (
         err === ERR_INVALID_AUTH ||
         (err instanceof GuestApiError && err.status === 401)
@@ -463,6 +504,107 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
           this.localize?.("guest-assistant.login.error_generic");
       }
       this._view = "error";
+    }
+  }
+
+  /** Browser: the token comes from the proxy for the session cookie. */
+  private async _connectWithSession() {
+    const [session, tokens] = await Promise.all([
+      getSession().catch(() => null),
+      getHassToken(),
+    ]);
+    if (session) {
+      this._userName = session.user.name || "Guest";
+    }
+    this._dashboardUrlPath = tokens.dashboard_url_path;
+
+    const auth = new GuestAuth(window.location.origin, tokens);
+    this._auth = auth;
+    try {
+      this._connection = await createConnection({ auth });
+    } catch (err) {
+      if (err !== ERR_INVALID_AUTH) {
+        throw err;
+      }
+      await auth.refreshAccessToken();
+      this._connection = await createConnection({ auth });
+    }
+  }
+
+  /** Companion app: the token comes from the app, the dashboard from the proxy. */
+  private async _connectExternal() {
+    if (!this._externalAuth) {
+      try {
+        this._externalAuth = await loadExternalAuth(window.location.origin);
+      } finally {
+        removeLaunchScreen(
+          !!this._externalAuth?.external?.config.hasSplashscreen
+        );
+      }
+      this._attachExternalBus(this._externalAuth);
+    }
+    const auth = this._externalAuth;
+    this._auth = auth;
+    try {
+      this._connection = await createConnection({ auth });
+    } catch (err) {
+      if (err !== ERR_INVALID_AUTH) {
+        throw err;
+      }
+      // Like the regular frontend: the app refreshes a token it still
+      // considers valid only when asked with force (e.g. after the proxy
+      // stopped accepting it).
+      await auth.refreshAccessToken(true);
+      this._connection = await createConnection({ auth });
+    }
+    const info = await getGuestInfo(auth.accessToken).catch(() => null);
+    if (info) {
+      this._userName = info.name || "Guest";
+      this._dashboardUrlPath = info.dashboard_url_path;
+    }
+  }
+
+  /** Answers the app's commands and forwards haptic feedback to it. */
+  private _attachExternalBus(auth: ExternalAuth) {
+    const bus = auth.external;
+    if (!bus) {
+      return;
+    }
+    bus.addCommandHandler((msg) => {
+      const result = handleExternalCommand(msg, {
+        dashboardUrlPath: this._dashboardUrlPath,
+        reconnect: () => this._connection?.reconnect(true),
+        navigate: (path, options) => navigate(path, options),
+      });
+      bus.fireMessage(
+        result.success
+          ? { id: msg.id, type: "result", success: true, result: null }
+          : { id: msg.id, type: "result", success: false, error: result.error }
+      );
+      return true;
+    });
+    window.addEventListener("haptic", (ev) =>
+      bus.fireMessage({ type: "haptic", payload: { hapticType: ev.detail } })
+    );
+  }
+
+  /**
+   * Tells the app the page is ready, so it takes down its splash screen:
+   * once the dashboard has what it needs to render, or an error or the
+   * signed-out view is shown.
+   */
+  private _maybeSendLoaded() {
+    const bus = this._externalAuth?.external;
+    if (!bus || this._loadedSent) {
+      return;
+    }
+    const ready =
+      this._view === "error" ||
+      this._view === "signed-out" ||
+      (this._view === "dashboard" && !!this.hass?.config && !!this.hass.themes);
+    if (ready) {
+      this._loadedSent = true;
+      bus.fireMessage({ type: "frontend/loaded" });
     }
   }
 
@@ -506,6 +648,18 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   }
 
   private async _logout() {
+    if (this._external) {
+      // The app revokes its login and shows its own signed-out state.
+      try {
+        await this._externalAuth?.revoke();
+      } catch {
+        // ignore, the login may already be gone
+      }
+      this._teardownConnection();
+      this._clearProblem();
+      this._view = "signed-out";
+      return;
+    }
     try {
       await this._auth?.revoke();
     } catch {

@@ -87,6 +87,32 @@ at the target size: `guest-icon-{192,512}.png` transparent and
 (180 px) on white at 78 %, and `favicon.ico` from 16, 32 and 48 px renders
 (`convert favicon-16.png favicon-32.png favicon-48.png favicon.ico`).
 
+## Companion app
+
+The Home Assistant companion apps can show the guest page instead of Home
+Assistant's frontend, once the admin switched that on in the proxy (its
+`src/companion/`). The app loads `/?external_auth=1` in its web view and
+adds a JavaScript bridge (`window.externalApp`, `window.externalAppV2` or
+`window.webkit.messageHandlers`).
+
+- `ha-guest-assistant.ts` checks for the bridge (`hasExternalBridge()` in
+  `data/guest-external.ts`; the URL parameter alone does not count). With
+  it, there is no login form and no cookie: the upstream `ExternalAuth`
+  (`src/external_app/external_auth.ts`) asks the app for tokens, and
+  `GET /api/guest-assistant/session` tells name and dashboard.
+- The page answers the app's commands itself: `restart` reconnects,
+  `navigate` only works inside the guest's dashboard, everything else is
+  refused. It sends `frontend/loaded` once the dashboard can render (or an
+  error is shown), removes the launch screen without animation when the app
+  has its own splash screen, and leaves the service worker out.
+- Log out asks the app to revoke its login and shows a signed-out page.
+- `authorize.html` (`ha-guest-assistant-authorize.ts`, served by the proxy
+  at `/auth/authorize`) is the page the app opens to sign a guest in. It
+  shows the regular guest login, accepts only the official apps' client ids
+  and `homeassistant://auth-callback` (`data/guest-authorize.ts`), signs in
+  through the proxy's `/auth/login_flow` and sends the app to its callback
+  with the code.
+
 ## Translations
 
 Strings live under the top-level `guest-assistant` key in

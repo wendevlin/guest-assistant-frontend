@@ -180,11 +180,19 @@ export const registerGuestServiceWorker = async (): Promise<void> => {
       await Promise.all(registrations.map((reg) => reg.unregister()));
       return;
     }
-    if (supportsServiceWorker()) {
-      await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-        updateViaCache: "none",
-      });
+    if (!supportsServiceWorker()) {
+      return;
+    }
+    await navigator.serviceWorker.register("/sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    });
+    if (!navigator.serviceWorker.controller) {
+      // This page did not come through the worker (first visit, or after
+      // reloadFresh() dropped it), so the worker has no page for when the
+      // proxy is out of reach yet.
+      const registration = await navigator.serviceWorker.ready;
+      registration.active?.postMessage({ type: "store-shell" });
     }
   } catch (_err) {
     // The app works without a service worker, just not offline.

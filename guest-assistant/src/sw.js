@@ -32,25 +32,6 @@ const BUST_PARAM = "ha_cache_bust";
 // the guest app.
 const OTHER_PREFIXES = ["/api/", "/static/", "/local/", "/admin/"];
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => key !== SHELL_CACHE)
-            .map((key) => caches.delete(key))
-        )
-      )
-      .then(() => self.clients.claim())
-  );
-});
-
 const isAppPage = (url) =>
   url.origin === self.location.origin &&
   url.pathname !== "/admin" &&
@@ -78,6 +59,44 @@ const storeShell = async (response) => {
   const cache = await caches.open(SHELL_CACHE);
   await cache.put(SHELL_KEY, response);
 };
+
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+// Sent by a page that did not pass through this worker (the first visit, or
+// one after reloadFresh() dropped the worker and its cache), so the app also
+// opens offline right away. The proxy only answers with the app's page when
+// the request asks for HTML.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "store-shell") {
+    event.waitUntil(
+      fetch(
+        new Request("/", {
+          headers: { accept: "text/html" },
+          cache: "no-store",
+        })
+      )
+        .then(storeShell)
+        .catch(() => undefined)
+    );
+  }
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== SHELL_CACHE)
+            .map((key) => caches.delete(key))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
+});
 
 const storedShell = () =>
   caches

@@ -12316,6 +12316,13 @@
     "retry": "Try again",
     "settings": {
       "version": "Version"
-    }
+    },
+    "authorize": {
+      "invalid": "This page signs you in to the Home Assistant app. Open it from the app."
+    },
+    "external": {
+      "auth_failed": "The Home Assistant app could not sign you in. Try again, or sign in to the app again."
+    },
+    "signed_out": "You are signed out."
   }
 }

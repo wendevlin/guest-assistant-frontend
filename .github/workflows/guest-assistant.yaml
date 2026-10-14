@@ -3,6 +3,11 @@ name: Guest Assistant frontend
 # Builds the guest frontend (guest-assistant/dist) and publishes it as a
 # release asset, together with its SHA-256 checksum. The Guest Assistant app
 # image downloads it from there.
+#
+# Pushes to guest-assistant publish the latest release, for the stable app.
+# Running the workflow by hand on another branch (e.g. a pull request's)
+# publishes a prerelease instead, never marked latest: Guest Assistant Beta
+# can pin it (scripts/pin-frontend.sh --beta in wendevlin/guest-assistant).
 
 on:
   workflow_dispatch:
@@ -50,13 +55,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           tag="$GUEST_ASSISTANT_BUILD"
+          if [ "$BRANCH" = guest-assistant ]; then
+            kind=(--latest)
+            title="Guest frontend $tag"
+          else
+            kind=(--prerelease --latest=false)
+            title="Guest frontend $tag (prerelease from $BRANCH)"
+          fi
           gh release create "$tag" \
             guest-assistant-frontend.tar.gz \
             guest-assistant-frontend.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --target "$SHA" \
-            --title "Guest frontend $tag" \
-            --notes "Guest Assistant frontend built from $SHA." \
-            --latest
+            --title "$title" \
+            --notes "Guest Assistant frontend built from $SHA ($BRANCH)." \
+            "${kind[@]}"

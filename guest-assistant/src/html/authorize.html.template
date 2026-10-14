@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- The companion app's sign-in page (served at /auth/authorize). The proxy replaces this title with the app name set on its admin page. -->
+    <title>Guest Assistant</title>
+    <%= renderTemplate("../../../src/html/_header.html.template") %>
+    <link rel="icon" href="/static/icons/guest-icon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <%= renderTemplate("../../../src/html/_style_base.html.template") %>
+    <style>
+      html {
+        background-color: var(--primary-background-color, #fafafa);
+        color: var(--primary-text-color, #212121);
+      }
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      ha-guest-assistant-authorize {
+        display: block;
+        height: 100%;
+      }
+      @media (prefers-color-scheme: dark) {
+        html {
+          background-color: var(--primary-background-color, #111111);
+          color: var(--primary-text-color, #e1e1e1);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <ha-guest-assistant-authorize></ha-guest-assistant-authorize>
+    <%= renderTemplate("../../../src/html/_js_base.html.template") %>
+    <%= renderTemplate("../../../src/html/_preload_roboto.html.template") %>
+    <%= renderTemplate("../../../src/html/_script_loader.html.template") %>
+  </body>
+</html>

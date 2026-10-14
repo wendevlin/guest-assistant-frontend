@@ -23,6 +23,15 @@ export class GuestAssistantLogin extends LitElement {
 
   @property() public language?: string;
 
+  /**
+   * Signs the guest in. Defaults to the proxy's cookie sign-in; the
+   * companion app's authorize page passes its login flow instead.
+   */
+  @property({ attribute: false }) public signIn: (
+    username: string,
+    password: string
+  ) => Promise<void> = signIn;
+
   @state() private _loading = false;
 
   @state() private _error?: string;
@@ -141,18 +150,24 @@ export class GuestAssistantLogin extends LitElement {
     this._loading = true;
     this._error = undefined;
     try {
-      await signIn(username, password);
+      await this.signIn(username, password);
       fireEvent(this, "authenticated");
     } catch (err) {
+      const unavailable =
+        err instanceof GuestApiError &&
+        (err.base === "guest_disabled" || err.base === "dashboard_unavailable");
       const invalid =
         err instanceof GuestApiError &&
         (err.status === 401 || err.status === 400);
-      this._error = invalid
-        ? this.localize?.(
-            "ui.panel.page-authorize.form.providers.homeassistant.error.invalid_auth"
-          ) || "Invalid username or password"
-        : this.localize?.("guest-assistant.login.error_generic") ||
-          "Sign in failed, please try again";
+      this._error = unavailable
+        ? this.localize?.("guest-assistant.login.error_unavailable") ||
+          "Your dashboard is currently not available. Please contact your host."
+        : invalid
+          ? this.localize?.(
+              "ui.panel.page-authorize.form.providers.homeassistant.error.invalid_auth"
+            ) || "Invalid username or password"
+          : this.localize?.("guest-assistant.login.error_generic") ||
+            "Sign in failed, please try again";
       this._password.value = "";
     } finally {
       this._loading = false;

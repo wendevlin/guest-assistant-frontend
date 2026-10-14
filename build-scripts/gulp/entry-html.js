@@ -303,7 +303,11 @@ gulp.task(
   )
 );
 
-const GUEST_ASSISTANT_PAGE_ENTRIES = { "index.html": ["entrypoint"] };
+const GUEST_ASSISTANT_PAGE_ENTRIES = {
+  "index.html": ["entrypoint"],
+  // The companion app's sign-in page, served by the proxy at /auth/authorize.
+  "authorize.html": ["authorize"],
+};
 
 gulp.task(
   "gen-pages-guest-assistant-dev",

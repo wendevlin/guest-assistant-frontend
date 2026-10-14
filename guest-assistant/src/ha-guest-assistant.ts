@@ -26,6 +26,7 @@ import {
   getProxyStatus,
   getSession,
   GuestApiError,
+  setAppCookie,
 } from "./data/guest-api";
 import { GuestAuth } from "./data/guest-auth";
 import {
@@ -312,6 +313,10 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
 
   protected hassReconnected() {
     super.hassReconnected();
+    // The proxy may have restarted or the guest's dashboard changed.
+    if (this._external) {
+      this._renewAppCookie();
+    }
     this._clearProblem();
     // An update restarts the proxy, so this is when a new build arrives.
     this._checkForUpdate(true);
@@ -557,10 +562,28 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
       await auth.refreshAccessToken(true);
       this._connection = await createConnection({ auth });
     }
+    await this._renewAppCookie();
     const info = await getGuestInfo(auth.accessToken).catch(() => null);
     if (info) {
       this._userName = info.name || "Guest";
       this._dashboardUrlPath = info.dashboard_url_path;
+    }
+  }
+
+  /**
+   * Images and camera streams load without the app's token; the cookie set
+   * here lets them through (the browser has its session cookie for that).
+   * A failure only costs pictures, never the dashboard.
+   */
+  private async _renewAppCookie() {
+    const token = this._externalAuth?.accessToken;
+    if (!token) {
+      return;
+    }
+    try {
+      await setAppCookie(token);
+    } catch {
+      // pictures stay empty until the next reconnect
     }
   }
 

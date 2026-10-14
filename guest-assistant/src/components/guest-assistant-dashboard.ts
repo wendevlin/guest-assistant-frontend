@@ -1,4 +1,4 @@
-import { mdiCog, mdiLogout } from "@mdi/js";
+import { mdiCellphoneCog, mdiCog, mdiLogout } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators";
 import memoizeOne from "memoize-one";
@@ -40,7 +40,21 @@ export class GuestAssistantDashboard extends LitElement {
     })
   );
 
-  private _actions: ExtraActionItem[] = [
+  private _actions = memoizeOne((appSettings: boolean): ExtraActionItem[] => [
+    // In the companion app: its own settings, where guests switch servers
+    // (the app's gesture for it may not be set up).
+    ...(appSettings
+      ? [
+          {
+            icon: mdiCellphoneCog,
+            labelKey: "ui.sidebar.external_app_configuration" as const,
+            action: () =>
+              this.hass?.auth.external?.fireMessage({
+                type: "config_screen/show",
+              }),
+          },
+        ]
+      : []),
     {
       icon: mdiCog,
       labelKey: "ui.dialogs.more_info_control.settings",
@@ -51,7 +65,7 @@ export class GuestAssistantDashboard extends LitElement {
       labelKey: "ui.panel.profile.logout",
       action: () => this._confirmLogout(),
     },
-  ];
+  ]);
 
   protected render() {
     // Cards read config/themes through lit context; wait until both exist.
@@ -71,7 +85,9 @@ export class GuestAssistantDashboard extends LitElement {
         .narrow=${this.narrow}
         .route=${this.route}
         .panel=${this._panel(this.dashboardUrlPath)}
-        .extraActionItems=${this._actions}
+        .extraActionItems=${this._actions(
+          !!this.hass.auth.external?.config?.hasSettingsScreen
+        )}
       ></ha-panel-lovelace>
     `;
   }

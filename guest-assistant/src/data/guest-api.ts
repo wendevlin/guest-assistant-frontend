@@ -108,6 +108,21 @@ export const getGuestInfo = async (
 };
 
 /**
+ * In the companion app: trades the app's token for the web view cookie, so
+ * images, camera streams and HLS segments load (they are plain requests that
+ * cannot carry the token). Renewed on every (re)connect.
+ */
+export const setAppCookie = async (accessToken: string): Promise<void> => {
+  const res = await request("/api/guest-assistant/app-cookie", {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new GuestApiError(res.status, "Could not set the app cookie");
+  }
+};
+
+/**
  * Signs a guest in for the companion app (authorize page). Returns the
  * authorization code the app exchanges for its tokens.
  */

@@ -12313,6 +12313,9 @@
       "connection": "Connection lost",
       "reconnecting": "Trying to reconnect automatically…"
     },
-    "retry": "Try again"
+    "retry": "Try again",
+    "settings": {
+      "version": "Version"
+    }
   }
 }

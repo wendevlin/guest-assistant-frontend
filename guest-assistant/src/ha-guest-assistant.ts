@@ -7,11 +7,14 @@ import {
 import { css, html, nothing, type PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators";
 import { mainWindow } from "../../src/common/dom/get_main_window";
+import { replaceCurrentUrl } from "../../src/common/navigate";
 import "../../src/components/ha-alert";
 import "../../src/components/ha-button";
 import "../../src/components/ha-spinner";
 import { haStyle } from "../../src/resources/styles";
 import type { Route } from "../../src/types";
+import { removeLaunchScreen } from "../../src/util/launch-screen";
+import { recoverFromStaleBuild } from "../../src/util/recover-stale-build";
 import "./components/guest-assistant-connection-banner";
 import type { ConnectionProblem } from "./components/guest-assistant-connection-banner";
 import "./components/guest-assistant-dashboard";
@@ -23,6 +26,11 @@ import {
   GuestApiError,
 } from "./data/guest-api";
 import { GuestAuth } from "./data/guest-auth";
+import {
+  GuestUpdateChecker,
+  registerGuestServiceWorker,
+  updateGuestServiceWorker,
+} from "./data/guest-update";
 import { GuestAssistantBaseElement } from "./guest-assistant-base-element";
 
 /** Dialogs a guest must never be able to open, even via shortcuts. */
@@ -43,6 +51,14 @@ const RETRY_INTERVAL_MS = 5000;
  * command the proxy denies would otherwise leave the spinner up forever.
  */
 const LOAD_TIMEOUT_MS = 25000;
+
+const sessionStore = (): Storage | undefined => {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+};
 
 /** Errors that mean "try again later" rather than "this will never work". */
 const isConnectivityError = (err: unknown) =>
@@ -80,8 +96,19 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
 
   private _userName = "Guest";
 
+  private _updates = new GuestUpdateChecker({
+    currentBuild: __GUEST_ASSISTANT_BUILD__,
+    storage: sessionStore(),
+  });
+
   protected firstUpdated(changedProps: PropertyValues): void {
     super.firstUpdated(changedProps);
+
+    // The app runs: from here on it handles failures itself, the boot guard
+    // in index.html only covers the entry bundles.
+    removeLaunchScreen();
+    this._removeCacheBust();
+    this._watchForUpdates();
 
     this.addEventListener(
       "show-dialog",
@@ -235,9 +262,92 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     }
   }
 
+  protected hassConnected() {
+    super.hassConnected();
+    this._checkForUpdate(true);
+  }
+
   protected hassReconnected() {
     super.hassReconnected();
     this._clearProblem();
+    // An update restarts the proxy, so this is when a new build arrives.
+    this._checkForUpdate(true);
+  }
+
+  /**
+   * Keeps this page on the build the proxy serves (see data/guest-update.ts):
+   * checks when the app starts, comes back to the foreground or online, and
+   * after every (re)connect; reloads when a bundle of an old build is gone.
+   * Registered once, so it also covers the login screen.
+   */
+  private _watchForUpdates() {
+    registerGuestServiceWorker();
+    this._checkForUpdate();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        this._checkForUpdate();
+      }
+    });
+    // Back from the back/forward cache, the page did not load again.
+    window.addEventListener("pageshow", (ev) => {
+      if (ev.persisted) {
+        this._checkForUpdate();
+      }
+    });
+    window.addEventListener("online", () => this._checkForUpdate());
+
+    // Like logging-mixin.ts, without sending errors to Home Assistant's log
+    // (the proxy does not let guests write there). Resource errors do not
+    // bubble, so they are caught in the capture phase.
+    window.addEventListener(
+      "error",
+      (ev) => {
+        const target = ev.target as
+          (HTMLScriptElement & HTMLLinkElement) | null;
+        if (
+          target &&
+          (target.tagName === "SCRIPT" || target.tagName === "LINK")
+        ) {
+          recoverFromStaleBuild(target.src || target.href, this);
+        }
+      },
+      true
+    );
+    window.addEventListener("error", (ev) => {
+      if (recoverFromStaleBuild(ev.error?.message || ev.message, this)) {
+        ev.preventDefault();
+      }
+    });
+    window.addEventListener("unhandledrejection", (ev) => {
+      const reason: unknown = ev.reason;
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : typeof reason === "string"
+            ? reason
+            : "";
+      if (recoverFromStaleBuild(message, this)) {
+        ev.preventDefault();
+      }
+    });
+  }
+
+  private _checkForUpdate(force = false) {
+    this._updates.check(force);
+    updateGuestServiceWorker();
+  }
+
+  /**
+   * reloadFresh() and the boot guard reload with ha_cache_bust; once the app
+   * runs it has done its job (like core.ts).
+   */
+  private _removeCacheBust() {
+    const url = new URL(mainWindow.location.href);
+    if (!url.searchParams.has("ha_cache_bust")) {
+      return;
+    }
+    url.searchParams.delete("ha_cache_bust");
+    replaceCurrentUrl(`${url.pathname}${url.search}${url.hash}`);
   }
 
   /**

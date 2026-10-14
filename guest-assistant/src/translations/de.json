@@ -13,6 +13,9 @@
       "connection": "Verbindung unterbrochen",
       "reconnecting": "Versuche automatisch, die Verbindung wiederherzustellen…"
     },
-    "retry": "Erneut versuchen"
+    "retry": "Erneut versuchen",
+    "settings": {
+      "version": "Version"
+    }
   }
 }

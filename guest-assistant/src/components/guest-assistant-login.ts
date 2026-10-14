@@ -59,7 +59,7 @@ export class GuestAssistantLogin extends LitElement {
     return html`
       <div class="content">
         <div class="header">
-          <img src="/static/icons/favicon-192x192.png" alt="Home Assistant" />
+          <img src="/static/icons/guest-icon.svg" alt="" />
         </div>
         <div class="card-content">
           <form @submit=${this._submit} @keydown=${this._handleKeyDown}>

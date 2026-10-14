@@ -351,9 +351,16 @@ module.exports.config = {
       name: "guest-assistant" + nameSuffix(latestBuild),
       entry: {
         entrypoint: path.resolve(paths.guestAssistant_dir, "src/entrypoint.js"),
+        ...module.exports.mapWorkerEntry(),
       },
       outputPath: outputPath(paths.guestAssistant_output_root, latestBuild),
       publicPath: publicPath(latestBuild),
+      defineOverlay: {
+        // Set by the gulp task; also written to build.json.
+        __GUEST_ASSISTANT_BUILD__: JSON.stringify(
+          process.env.GUEST_ASSISTANT_BUILD ?? "dev"
+        ),
+      },
       isProdBuild,
       latestBuild,
       isStatsBuild,

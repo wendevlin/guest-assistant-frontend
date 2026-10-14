@@ -30,6 +30,12 @@ jobs:
           persist-credentials: false
       - name: Setup Node and install
         uses: ./.github/actions/setup
+      # The release tag is also the build id the app compares with the
+      # proxy's build.json, so both are computed once, here.
+      - name: Set the build id
+        env:
+          SHA: ${{ github.sha }}
+        run: echo "GUEST_ASSISTANT_BUILD=$(date -u +%Y.%m.%d)-${SHA::9}" >> "$GITHUB_ENV"
       - name: Build the guest frontend
         uses: ./.github/actions/build
         with:
@@ -45,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ github.sha }}
         run: |
-          tag="$(date -u +%Y.%m.%d)-${SHA::9}"
+          tag="$GUEST_ASSISTANT_BUILD"
           gh release create "$tag" \
             guest-assistant-frontend.tar.gz \
             guest-assistant-frontend.tar.gz.sha256 \

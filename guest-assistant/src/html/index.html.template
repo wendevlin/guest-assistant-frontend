@@ -1,19 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>Home Assistant</title>
+    <!-- The proxy replaces this title and apple-mobile-web-app-title with the app name set on its admin page. -->
+    <title>Guest Assistant</title>
+    <% if (useCacheRecovery) { %><%= renderTemplate("../../../src/html/_bootstrap_recovery.html.template") %><% } %>
     <%= renderTemplate("../../../src/html/_header.html.template") %>
+    <link rel="icon" href="/static/icons/guest-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/static/icons/guest-apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Guest Assistant" />
+    <!-- Follows the theme once the app runs (themes-mixin), so keep it the only one. -->
+    <meta name="theme-color" content="#FFFFFF" />
     <%= renderTemplate("../../../src/html/_style_base.html.template") %>
     <style>
       html {
         background-color: var(--primary-background-color, #fafafa);
         color: var(--primary-text-color, #212121);
-      }
-      @media (prefers-color-scheme: dark) {
-        html {
-          background-color: var(--primary-background-color, #111111);
-          color: var(--primary-text-color, #e1e1e1);
-        }
       }
       body {
         height: 100%;
@@ -23,9 +27,43 @@
         display: block;
         height: 100%;
       }
+      #ha-launch-screen {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 24px;
+        padding: 16px;
+        text-align: center;
+        background-color: var(--primary-background-color, #fafafa);
+        z-index: 100;
+        transition: opacity var(--ha-animation-duration-normal, 250ms) ease-out;
+      }
+      #ha-launch-screen.removing {
+        opacity: 0;
+      }
+      #ha-launch-screen img {
+        width: 96px;
+        height: 96px;
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        #ha-launch-screen {
+          background-color: var(--primary-background-color, #111111);
+          color: var(--primary-text-color, #e1e1e1);
+        }
+      }
     </style>
   </head>
   <body>
+    <!-- Shown until the app has started; the boot guard writes into the info box when it cannot. -->
+    <div id="ha-launch-screen">
+      <img src="/static/icons/guest-icon.svg" alt="" />
+      <div id="ha-launch-screen-info-box"></div>
+    </div>
     <ha-guest-assistant></ha-guest-assistant>
     <%= renderTemplate("../../../src/html/_js_base.html.template") %>
     <%= renderTemplate("../../../src/html/_preload_roboto.html.template") %>

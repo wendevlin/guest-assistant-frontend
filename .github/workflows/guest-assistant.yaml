@@ -4,16 +4,28 @@ name: Guest Assistant frontend
 # release asset, together with its SHA-256 checksum. The Guest Assistant app
 # image downloads it from there.
 #
-# Pushes to guest-assistant publish the latest release, for the stable app.
-# Running the workflow by hand on another branch (e.g. a pull request's)
-# publishes a prerelease instead, never marked latest: Guest Assistant Beta
-# can pin it (scripts/pin-frontend.sh --beta in wendevlin/guest-assistant).
+# | Branch               | Channel | Release                       |
+# |----------------------|---------|-------------------------------|
+# | guest-assistant      | stable  | latest                        |
+# | guest-assistant-beta | beta    | prerelease                    |
+# | any other (by hand)  | none    | prerelease, e.g. for a PR     |
+#
+# The tag is the Home Assistant frontend version the build is based on plus
+# the commit (20260930.3-1a2b3c4d5); it is also the build id the app compares
+# with the proxy's build.json. The release notes carry machine-readable lines
+# (Channel, Frontend, Core, Branch) that wendevlin/guest-assistant reads.
+#
+# Releases of a channel are announced to wendevlin/guest-assistant
+# (repository_dispatch `frontend-release`), which opens a pull request that
+# pins it for Guest Assistant (stable) or Guest Assistant Beta (beta). The
+# branches are updated by upstream-sync.yaml every morning.
 
 on:
   workflow_dispatch:
   push:
     branches:
       - guest-assistant
+      - guest-assistant-beta
 
 permissions:
   contents: read
@@ -32,15 +44,35 @@ jobs:
       - name: Check out files from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The whole history, to find the core release in the last upstream merge.
+          fetch-depth: 0
           persist-credentials: false
       - name: Setup Node and install
         uses: ./.github/actions/setup
       # The release tag is also the build id the app compares with the
       # proxy's build.json, so both are computed once, here.
       - name: Set the build id
+        id: build_id
         env:
           SHA: ${{ github.sha }}
-        run: echo "GUEST_ASSISTANT_BUILD=$(date -u +%Y.%m.%d)-${SHA::9}" >> "$GITHUB_ENV"
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          frontend=$(sed -n 's/^version *= *"\([0-9]\{8\}\.[0-9]*\)"$/\1/p' pyproject.toml)
+          [ -n "$frontend" ] || { echo "No frontend version in pyproject.toml" >&2; exit 1; }
+          # Written by guest-assistant/script/merge-upstream into the merge commit.
+          core=$(git log -1 --first-parent --format=%b --grep='^Frontend of Home Assistant ' |
+            sed -n 's/^Frontend of Home Assistant \(.*\)\.$/\1/p' | head -n 1)
+          case $BRANCH in
+            guest-assistant) channel=stable ;;
+            guest-assistant-beta) channel=beta ;;
+            *) channel=none ;;
+          esac
+          echo "GUEST_ASSISTANT_BUILD=$frontend-${SHA::9}" >> "$GITHUB_ENV"
+          {
+            echo "frontend=$frontend"
+            echo "core=${core:-unknown}"
+            echo "channel=$channel"
+          } >> "$GITHUB_OUTPUT"
       - name: Build the guest frontend
         uses: ./.github/actions/build
         with:
@@ -56,20 +88,57 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SHA: ${{ github.sha }}
           BRANCH: ${{ github.ref_name }}
+          CHANNEL: ${{ steps.build_id.outputs.channel }}
+          FRONTEND: ${{ steps.build_id.outputs.frontend }}
+          CORE: ${{ steps.build_id.outputs.core }}
         run: |
           tag="$GUEST_ASSISTANT_BUILD"
-          if [ "$BRANCH" = guest-assistant ]; then
-            kind=(--latest)
-            title="Guest frontend $tag"
-          else
-            kind=(--prerelease --latest=false)
-            title="Guest frontend $tag (prerelease from $BRANCH)"
-          fi
+          case $CHANNEL in
+            stable)
+              kind=(--latest)
+              title="Guest frontend $tag"
+              ;;
+            beta)
+              kind=(--prerelease --latest=false)
+              title="Guest frontend $tag (beta)"
+              ;;
+            *)
+              kind=(--prerelease --latest=false)
+              title="Guest frontend $tag (prerelease from $BRANCH)"
+              ;;
+          esac
+          notes=$(printf '%s\n' \
+            "Guest Assistant frontend built from $SHA ($BRANCH)." \
+            "" \
+            "Channel: $CHANNEL" \
+            "Frontend: $FRONTEND" \
+            "Core: $CORE" \
+            "Branch: $BRANCH")
           gh release create "$tag" \
             guest-assistant-frontend.tar.gz \
             guest-assistant-frontend.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --target "$SHA" \
             --title "$title" \
-            --notes "Guest Assistant frontend built from $SHA ($BRANCH)." \
+            --notes "$notes" \
             "${kind[@]}"
+      - name: Announce the release to Guest Assistant
+        if: steps.build_id.outputs.channel != 'none'
+        env:
+          GH_TOKEN: ${{ secrets.GUEST_ASSISTANT_BOT_TOKEN }}
+          CHANNEL: ${{ steps.build_id.outputs.channel }}
+          FRONTEND: ${{ steps.build_id.outputs.frontend }}
+          CORE: ${{ steps.build_id.outputs.core }}
+        run: |
+          # Without the token the daily run of frontend-update.yaml there still
+          # finds the release, only later.
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::GUEST_ASSISTANT_BOT_TOKEN is not set, wendevlin/guest-assistant is not notified"
+            exit 0
+          fi
+          gh api repos/wendevlin/guest-assistant/dispatches \
+            -f event_type=frontend-release \
+            -f "client_payload[channel]=$CHANNEL" \
+            -f "client_payload[release]=$GUEST_ASSISTANT_BUILD" \
+            -f "client_payload[frontend]=$FRONTEND" \
+            -f "client_payload[core]=$CORE"

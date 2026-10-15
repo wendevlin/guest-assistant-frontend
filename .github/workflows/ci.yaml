@@ -6,10 +6,14 @@ on:
     branches:
       - dev
       - master
+      - guest-assistant
+      - guest-assistant-beta
   pull_request:
     branches:
       - dev
       - master
+      - guest-assistant
+      - guest-assistant-beta
 
 env:
   NODE_OPTIONS: --max_old_space_size=6144

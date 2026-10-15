@@ -1,0 +1,60 @@
+#!/bin/sh
+# Prints which Home Assistant frontend each channel of the guest frontend
+# should be built on, one line per channel:
+#
+#   stable 2026.10.1 20260930.3
+#   beta 2026.11.0b0 20261028.0
+#
+# The second column is the Home Assistant core release the channel is at, the
+# third the frontend version that release pins (home-assistant-frontend==… in
+# homeassistant/components/frontend/manifest.json). Beta is the newest core
+# release of any kind, like Home Assistant's beta channel: after the stable
+# release both channels name the same frontend until the next b0.
+#
+# Usage: guest-assistant/script/upstream-targets [stable|beta]
+#
+# Needs network access to github.com. HA_CORE_REPO overrides the core
+# repository (for tests).
+
+set -e
+
+only=${1:-}
+case $only in
+  ""|stable|beta) ;;
+  *) echo "usage: $0 [stable|beta]" >&2; exit 1 ;;
+esac
+
+core=${HA_CORE_REPO:-https://github.com/home-assistant/core.git}
+raw=${HA_CORE_RAW:-https://raw.githubusercontent.com/home-assistant/core}
+
+# Release tags only: 2026.10.1 (stable) or 2026.10.0b3 (beta). Each gets a
+# sortable key; a beta sorts before the stable release of the same number.
+keyed=$(
+  git ls-remote --tags --refs "$core" 'refs/tags/*' |
+    sed 's|.*refs/tags/||' |
+    grep -E '^[0-9]{4}\.[0-9]{1,2}\.[0-9]+(b[0-9]+)?$' |
+    awk -F'[.b]' '{ rank = (NF == 4) ? $4 : 99999; printf "%04d.%02d.%04d.%05d %s\n", $1, $2, $3, rank, $0 }' |
+    sort
+)
+[ -n "$keyed" ] || { echo "No release tags found in $core" >&2; exit 1; }
+
+beta=$(printf '%s\n' "$keyed" | tail -n 1 | cut -d' ' -f2)
+stable=$(printf '%s\n' "$keyed" | grep -v 'b[0-9]*$' | tail -n 1 | cut -d' ' -f2)
+
+frontend_of() {
+  version=$(curl -fsSL "$raw/$1/homeassistant/components/frontend/manifest.json" |
+    sed -n 's/.*"home-assistant-frontend==\([0-9]\{8\}\.[0-9]*\)".*/\1/p')
+  [ -n "$version" ] || { echo "Core $1 does not pin a frontend version" >&2; exit 1; }
+  echo "$version"
+}
+
+if [ "$only" != beta ]; then
+  echo "stable $stable $(frontend_of "$stable")"
+fi
+if [ "$only" != stable ]; then
+  if [ "$beta" = "$stable" ]; then
+    echo "beta $stable $(frontend_of "$stable")"
+  else
+    echo "beta $beta $(frontend_of "$beta")"
+  fi
+fi

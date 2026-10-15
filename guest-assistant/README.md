@@ -49,6 +49,64 @@ The production build lands in `guest-assistant/dist`. The proxy serves it via
 own `./public` directory instead, so copying the contents of
 `guest-assistant/dist` there works too.
 
+## Following Home Assistant releases
+
+The guest page has to stay close to the Home Assistant version it talks to,
+so there are two channels, each on its own branch, like Home Assistant's own
+stable and beta channels:
+
+| Channel | Branch                 | Built on the frontend of                                                                                 | App                  |
+| ------- | ---------------------- | -------------------------------------------------------------------------------------------------------- | -------------------- |
+| stable  | `guest-assistant`      | the newest stable core release (`2026.10.1`)                                                             | Guest Assistant      |
+| beta    | `guest-assistant-beta` | the newest core release of any kind (`2026.11.0b0`, then `2026.11.0`, `2026.11.1`, …, until the next b0) | Guest Assistant Beta |
+
+Work on the guest page happens on `guest-assistant`. `guest-assistant-beta`
+is kept by the sync below and only ever merges `guest-assistant` and
+upstream releases; between a stable release and the next beta both channels
+are built on the same frontend.
+
+**Every morning** `.github/workflows/upstream-sync.yaml` runs
+`script/upstream-targets`, which reads the newest core tags and the frontend
+version each one pins (`homeassistant/components/frontend/manifest.json`), and
+`script/merge-upstream <channel> <core> <frontend>`, which merges that
+frontend tag from home-assistant/frontend into the channel's branch (the beta
+branch merges `guest-assistant` first). The merged branch is checked (eslint,
+tsc, tests, guest build) and pushed. Betas and stable releases come out in
+the evening, patch releases mostly on Fridays, so a release is picked up the
+next morning.
+
+**Every push** to either branch runs `.github/workflows/guest-assistant.yaml`:
+it builds the page and publishes it as a release tagged
+`<frontend version>-<commit>` (`20260930.3-1a2b3c4d5`), the latest release for
+stable, a prerelease for beta. The tag is the build id. The release notes end
+with lines the app repository reads:
+
+```
+Channel: stable
+Frontend: 20260930.3
+Core: 2026.10.1
+Branch: guest-assistant
+```
+
+The release is then announced to wendevlin/guest-assistant, which opens a pull
+request that pins it for the app (see "Releases" in its README).
+
+**When the sync stops**, because the merge conflicts or a check fails, nothing
+is pushed and an issue "Frontend sync: …" opens in wendevlin/guest-assistant
+with the files and the commands to run by hand:
+
+```sh
+guest-assistant/script/merge-upstream beta 2026.11.0b0 20261028.0
+# resolve, check (pnpm lint:types, pnpm test), commit
+git push origin HEAD:guest-assistant-beta
+```
+
+The next run continues from there. Both workflows push and dispatch with the
+secret `GUEST_ASSISTANT_BOT_TOKEN`, a fine-grained token of the repository
+owner with read and write access to contents, issues, pull requests and
+workflows of both repositories; pushes with the default token would not start
+the release workflow.
+
 ## Installable app and updates
 
 The guest page is a progressive web app that guests can add to their home

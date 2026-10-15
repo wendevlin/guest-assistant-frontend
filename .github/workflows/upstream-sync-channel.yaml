@@ -65,7 +65,7 @@ jobs:
       - name: Build resources
         id: resources
         if: steps.merge.outputs.result == 'merged'
-        run: ./node_modules/.bin/gulp gen-icons-json build-translations build-locale-data
+        run: ./node_modules/.bin/gulp gen-icons-json build-translations build-locale-data gather-gallery-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run eslint

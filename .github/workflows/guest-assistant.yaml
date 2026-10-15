@@ -11,14 +11,20 @@ name: Guest Assistant frontend
 # | any other (by hand)  | none    | prerelease, e.g. for a PR     |
 #
 # The tag is the Home Assistant frontend version the build is based on plus
-# the commit (20260930.3-1a2b3c4d5); it is also the build id the app compares
-# with the proxy's build.json. The release notes carry machine-readable lines
+# the commit (20260930.3-1a2b3c4d5, 20260930.3-1a2b3c4d5-beta for beta,
+# -prerelease for any other branch, so two branches on one commit do not
+# collide); it is also the build id the app compares with the proxy's
+# build.json. The release notes carry machine-readable lines
 # (Channel, Frontend, Core, Branch) that wendevlin/guest-assistant reads.
 #
 # Releases of a channel are announced to wendevlin/guest-assistant
 # (repository_dispatch `frontend-release`), which opens a pull request that
 # pins it for Guest Assistant (stable) or Guest Assistant Beta (beta). The
 # branches are updated by upstream-sync.yaml every morning.
+#
+# Pushes that change nothing in the build (workflows, docs, tests, the sync
+# scripts) release nothing: a release would only make the app pin the same
+# page again under a new version. Run the workflow by hand to release anyway.
 
 on:
   workflow_dispatch:
@@ -26,6 +32,14 @@ on:
     branches:
       - guest-assistant
       - guest-assistant-beta
+    paths-ignore:
+      - ".github/**"
+      - ".agents/**"
+      - ".vscode/**"
+      - "**/*.md"
+      - "test/**"
+      - "guest-assistant/script/merge-upstream"
+      - "guest-assistant/script/upstream-targets"
 
 permissions:
   contents: read
@@ -67,7 +81,12 @@ jobs:
             guest-assistant-beta) channel=beta ;;
             *) channel=none ;;
           esac
-          echo "GUEST_ASSISTANT_BUILD=$frontend-${SHA::9}" >> "$GITHUB_ENV"
+          case $channel in
+            stable) suffix= ;;
+            beta) suffix=-beta ;;
+            *) suffix=-prerelease ;;
+          esac
+          echo "GUEST_ASSISTANT_BUILD=$frontend-${SHA::9}$suffix" >> "$GITHUB_ENV"
           {
             echo "frontend=$frontend"
             echo "core=${core:-unknown}"

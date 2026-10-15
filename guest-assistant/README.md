@@ -75,11 +75,12 @@ tsc, tests, guest build) and pushed. Betas and stable releases come out in
 the evening, patch releases mostly on Fridays, so a release is picked up the
 next morning.
 
-**Every push** to either branch runs `.github/workflows/guest-assistant.yaml`:
-it builds the page and publishes it as a release tagged
-`<frontend version>-<commit>` (`20260930.3-1a2b3c4d5`), the latest release for
-stable, a prerelease for beta. The tag is the build id. The release notes end
-with lines the app repository reads:
+**Every push** to either branch that changes the build runs
+`.github/workflows/guest-assistant.yaml` (pushes of only workflows, docs,
+tests or the sync scripts do not): it builds the page and publishes it as a
+release tagged `<frontend version>-<commit>` (`20260930.3-1a2b3c4d5`), the
+latest release for stable, a prerelease tagged `…-beta` for beta. The tag is
+the build id. The release notes end with lines the app repository reads:
 
 ```
 Channel: stable

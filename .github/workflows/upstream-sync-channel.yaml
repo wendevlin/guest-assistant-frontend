@@ -88,8 +88,10 @@ jobs:
           target: build-guest-assistant
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # "created": a new beta branch that is guest-assistant as it is, which
+      # was checked when it was pushed.
       - name: Push
-        if: steps.merge.outputs.result == 'merged'
+        if: steps.merge.outputs.result == 'merged' || steps.merge.outputs.result == 'created'
         env:
           TOKEN: ${{ secrets.GUEST_ASSISTANT_BOT_TOKEN }}
           BRANCH: ${{ steps.merge.outputs.branch }}

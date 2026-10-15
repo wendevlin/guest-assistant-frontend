@@ -1,0 +1,89 @@
+#!/bin/sh
+# Brings a channel branch of the guest frontend to a Home Assistant frontend
+# release:
+#
+#   stable  guest-assistant       fork changes + the stable frontend
+#   beta    guest-assistant-beta  guest-assistant + the beta channel's frontend
+#
+# Usage: guest-assistant/script/merge-upstream <stable|beta> <core tag> <frontend version>
+#   e.g. guest-assistant/script/merge-upstream beta 2026.11.0b0 20261028.0
+#
+# Fetches the frontend tag from home-assistant/frontend, checks the channel
+# branch out (creates guest-assistant-beta from guest-assistant the first
+# time), merges guest-assistant into the beta branch, then the release tag.
+# Nothing is pushed. Reports in $GITHUB_OUTPUT when set, else on stdout:
+#
+#   result=unchanged   the branch already contains everything
+#   result=merged      new merge commits to check and push
+#   result=conflict    merge aborted; conflicts=<files> lists the files
+#
+# A conflict exits with 2, other errors with 1. HA_FRONTEND_REPO overrides the
+# upstream repository (for tests).
+
+set -e
+
+cd "$(dirname "$0")/../.."
+
+channel=$1
+core=$2
+version=$3
+case $channel in
+  stable) branch=guest-assistant ;;
+  beta) branch=guest-assistant-beta ;;
+  *) echo "usage: $0 <stable|beta> <core tag> <frontend version>" >&2; exit 1 ;;
+esac
+case $version in
+  [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].[0-9]*) ;;
+  *) echo "Not a frontend version: $version" >&2; exit 1 ;;
+esac
+[ -n "$core" ] || { echo "Missing core tag" >&2; exit 1; }
+
+upstream=${HA_FRONTEND_REPO:-https://github.com/home-assistant/frontend.git}
+out=${GITHUB_OUTPUT:-/dev/stdout}
+
+report() {
+  echo "result=$1" >> "$out"
+}
+
+# Upstream tags are fetched one by one: the fork does not carry them.
+git fetch --no-tags "$upstream" "refs/tags/$version:refs/tags/$version"
+
+# The branches as they are on origin; a shallow or single-branch checkout
+# does not have them yet.
+git fetch origin "refs/heads/guest-assistant:refs/remotes/origin/guest-assistant"
+if ! git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null; then
+  [ "$channel" = beta ] || { echo "Branch $branch does not exist on origin" >&2; exit 1; }
+  echo "Creating $branch from guest-assistant"
+  git update-ref "refs/remotes/origin/$branch" origin/guest-assistant
+fi
+git checkout -B "$branch" "origin/$branch"
+
+merge() {
+  if git merge --no-ff --no-edit -m "$1" ${2:+-m "$2"} "$3"; then
+    return 0
+  fi
+  conflicts=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+  git merge --abort
+  echo "Merging $3 into $branch conflicts in: $conflicts" >&2
+  report conflict
+  echo "conflicts=$conflicts" >> "$out"
+  exit 2
+}
+
+merged=false
+if [ "$channel" = beta ] && ! git merge-base --is-ancestor origin/guest-assistant HEAD; then
+  merge "Merge guest-assistant into guest-assistant-beta" "" origin/guest-assistant
+  merged=true
+fi
+if ! git merge-base --is-ancestor "$version" HEAD; then
+  merge "Merge frontend release $version into $branch" "Frontend of Home Assistant $core." "$version"
+  merged=true
+fi
+
+if [ "$merged" = true ]; then
+  echo "$branch now at $(git log -1 --format='%h %s')"
+  report merged
+else
+  echo "$branch already contains frontend $version"
+  report unchanged
+fi

@@ -1,0 +1,143 @@
+name: Upstream sync (channel)
+
+# One channel of upstream-sync.yaml: merges the Home Assistant frontend release
+# the channel follows into its branch, checks the result and pushes it.
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_OPTIONS: --max_old_space_size=6144
+  # Issues about the sync go to the app's repository, where the pin pull
+  # requests are reviewed.
+  ISSUE_REPO: wendevlin/guest-assistant
+
+jobs:
+  sync:
+    name: Sync ${{ inputs.channel }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out files from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: guest-assistant
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Find the target
+        id: target
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          read -r _ core frontend <<EOF
+          $(guest-assistant/script/upstream-targets "$CHANNEL")
+          EOF
+          echo "Channel $CHANNEL follows Home Assistant $core (frontend $frontend)"
+          echo "core=$core" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
+      - name: Merge
+        id: merge
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          CORE: ${{ steps.target.outputs.core }}
+          FRONTEND: ${{ steps.target.outputs.frontend }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          code=0
+          guest-assistant/script/merge-upstream "$CHANNEL" "$CORE" "$FRONTEND" || code=$?
+          # 2 is a conflict, reported below; anything else is an error.
+          [ "$code" = 0 ] || [ "$code" = 2 ]
+          echo "branch=$(git branch --show-current)" >> "$GITHUB_OUTPUT"
+
+      # Checks run on the merged tree, before anything is pushed.
+      - name: Setup Node and install
+        id: install
+        if: steps.merge.outputs.result == 'merged'
+        uses: ./.github/actions/setup
+      - name: Build resources
+        id: resources
+        if: steps.merge.outputs.result == 'merged'
+        run: ./node_modules/.bin/gulp gen-icons-json build-translations build-locale-data
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run eslint
+        id: eslint
+        if: steps.merge.outputs.result == 'merged'
+        run: pnpm run lint:eslint --quiet
+      - name: Run tsc
+        id: tsc
+        if: steps.merge.outputs.result == 'merged'
+        run: pnpm run lint:types
+      - name: Run tests
+        id: tests
+        if: steps.merge.outputs.result == 'merged'
+        run: pnpm run test
+      - name: Build the guest frontend
+        id: build
+        if: steps.merge.outputs.result == 'merged'
+        uses: ./.github/actions/build
+        with:
+          target: build-guest-assistant
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: steps.merge.outputs.result == 'merged'
+        env:
+          TOKEN: ${{ secrets.GUEST_ASSISTANT_BOT_TOKEN }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+        run: |
+          [ -n "$TOKEN" ] || { echo "GUEST_ASSISTANT_BOT_TOKEN is not set" >&2; exit 1; }
+          git push "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+
+      - name: Report a conflict or a failed check
+        if: failure() || steps.merge.outputs.result == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GUEST_ASSISTANT_BOT_TOKEN }}
+          CHANNEL: ${{ inputs.channel }}
+          CORE: ${{ steps.target.outputs.core }}
+          FRONTEND: ${{ steps.target.outputs.frontend }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+          RESULT: ${{ steps.merge.outputs.result }}
+          CONFLICTS: ${{ steps.merge.outputs.conflicts }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "GUEST_ASSISTANT_BOT_TOKEN is not set, cannot open an issue" >&2; exit 1; }
+          [ -n "$FRONTEND" ] || FRONTEND=unknown
+          title="Frontend sync: $CHANNEL channel cannot take frontend $FRONTEND"
+          if [ "$RESULT" = conflict ]; then
+            what="Merging the frontend into \`$BRANCH\` conflicts in: \`$CONFLICTS\`"
+          else
+            what="A step failed, see the run."
+          fi
+          body=$(cat <<EOF
+          The $CHANNEL channel of the guest frontend should move to Home Assistant $CORE (frontend $FRONTEND), but the daily sync stopped. Nothing was pushed.
+
+          $what
+
+          Run: $RUN_URL
+
+          To fix it by hand in a checkout of wendevlin/guest-assistant-frontend:
+
+          \`\`\`sh
+          guest-assistant/script/merge-upstream $CHANNEL $CORE $FRONTEND
+          # resolve, check (pnpm lint:types, pnpm test), commit
+          git push origin HEAD:$BRANCH
+          \`\`\`
+
+          The next morning's run picks up from there.
+          EOF
+          )
+          existing=$(gh issue list --repo "$ISSUE_REPO" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$ISSUE_REPO" --body "Still failing: $RUN_URL"
+          else
+            gh issue create --repo "$ISSUE_REPO" --title "$title" --body "$body"
+          fi

@@ -1,0 +1,53 @@
+name: Upstream sync
+
+# Keeps the guest frontend on the Home Assistant frontend that Home Assistant
+# ships, per channel (guest-assistant/script/upstream-targets):
+#
+# | Channel | Branch               | Follows                                         |
+# |---------|----------------------|-------------------------------------------------|
+# | stable  | guest-assistant      | the newest stable core release (2026.10.1)      |
+# | beta    | guest-assistant-beta | the newest core release of any kind (2026.11.0b0) |
+#
+# Runs every morning: betas and stable releases come out in the evening
+# (Europe), patch releases usually on Friday but not always. A merged branch is
+# pushed with GUEST_ASSISTANT_BOT_TOKEN, so guest-assistant.yaml builds and
+# releases it and hands the release to wendevlin/guest-assistant, which opens
+# the pin pull request. A conflict or a failing check opens an issue there
+# instead, and nothing is pushed.
+#
+# Beta runs after stable, because the beta branch merges guest-assistant first.
+
+on:
+  schedule:
+    # 05:10 in Vienna in winter, 06:10 in summer.
+    - cron: "10 4 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Channel to sync
+        type: choice
+        options: [both, stable, beta]
+        default: both
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  stable:
+    if: github.event_name == 'schedule' || inputs.channel != 'beta'
+    uses: ./.github/workflows/upstream-sync-channel.yaml
+    with:
+      channel: stable
+    secrets: inherit
+
+  beta:
+    needs: stable
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.channel != 'stable') }}
+    uses: ./.github/workflows/upstream-sync-channel.yaml
+    with:
+      channel: beta
+    secrets: inherit

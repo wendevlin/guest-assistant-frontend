@@ -15,6 +15,8 @@
 #
 #   result=unchanged   the branch already contains everything
 #   result=merged      new merge commits to check and push
+#   result=created     the beta branch is new and needs nothing merged:
+#                      it is guest-assistant as it is, push it as it is
 #   result=conflict    merge aborted; conflicts=<files> lists the files
 #
 # A conflict exits with 2, other errors with 1. HA_FRONTEND_REPO overrides the
@@ -51,10 +53,12 @@ git fetch --no-tags "$upstream" "refs/tags/$version:refs/tags/$version"
 # The branches as they are on origin; a shallow or single-branch checkout
 # does not have them yet.
 git fetch origin "refs/heads/guest-assistant:refs/remotes/origin/guest-assistant"
+created=false
 if ! git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch" 2>/dev/null; then
   [ "$channel" = beta ] || { echo "Branch $branch does not exist on origin" >&2; exit 1; }
   echo "Creating $branch from guest-assistant"
   git update-ref "refs/remotes/origin/$branch" origin/guest-assistant
+  created=true
 fi
 git checkout -B "$branch" "origin/$branch"
 
@@ -83,6 +87,9 @@ fi
 if [ "$merged" = true ]; then
   echo "$branch now at $(git log -1 --format='%h %s')"
   report merged
+elif [ "$created" = true ]; then
+  echo "$branch is new and the same as guest-assistant"
+  report created
 else
   echo "$branch already contains frontend $version"
   report unchanged

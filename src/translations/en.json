@@ -12311,7 +12311,8 @@
     "login": {
       "title": "Welcome",
       "error_unavailable": "Your dashboard is currently not available. Please contact your host.",
-      "error_generic": "Sign in failed, please try again"
+      "error_generic": "Sign in failed, please try again",
+      "error_link": "This login link no longer works. Ask your host for a new one, or sign in with your username and password."
     },
     "connecting": "Connecting to Home Assistant…",
     "load_failed": "Your dashboard could not be loaded. Please try again or contact your host.",

@@ -3,7 +3,8 @@
     "login": {
       "title": "Willkommen",
       "error_unavailable": "Dein Dashboard ist gerade nicht verfügbar. Bitte wende dich an deinen Gastgeber.",
-      "error_generic": "Anmeldung fehlgeschlagen, bitte versuche es erneut"
+      "error_generic": "Anmeldung fehlgeschlagen, bitte versuche es erneut",
+      "error_link": "Dieser Anmeldelink funktioniert nicht mehr. Bitte deinen Gastgeber um einen neuen oder melde dich mit Benutzername und Passwort an."
     },
     "connecting": "Verbinde mit Home Assistant…",
     "load_failed": "Dein Dashboard konnte nicht geladen werden. Bitte versuche es erneut oder wende dich an deinen Gastgeber.",

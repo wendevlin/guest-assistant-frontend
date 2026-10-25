@@ -23,6 +23,9 @@ export class GuestAssistantLogin extends LitElement {
 
   @property() public language?: string;
 
+  /** Shown until the next sign-in attempt, e.g. why a login link did not work. */
+  @property({ attribute: false }) public error?: string;
+
   /**
    * Signs the guest in. Defaults to the proxy's cookie sign-in; the
    * companion app's authorize page passes its login flow instead.
@@ -39,6 +42,13 @@ export class GuestAssistantLogin extends LitElement {
   @query("#username") private _username!: HaInput;
 
   @query("#password") private _password!: HaInput;
+
+  protected willUpdate(changedProps: PropertyValues<this>) {
+    super.willUpdate(changedProps);
+    if (changedProps.has("error")) {
+      this._error = this.error;
+    }
+  }
 
   protected firstUpdated(changedProps: PropertyValues<this>) {
     super.firstUpdated(changedProps);

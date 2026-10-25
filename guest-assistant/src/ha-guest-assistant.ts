@@ -747,6 +747,7 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     this._clearProblem();
     this._errorMessage = undefined;
     this._errorReasons = [];
+    this._linkError = undefined;
     this._view = "login";
   }
 

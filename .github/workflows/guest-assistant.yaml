@@ -81,6 +81,15 @@ jobs:
             guest-assistant-beta) channel=beta ;;
             *) channel=none ;;
           esac
+          # The newest core release of the channel that pins this frontend
+          # names it best: a core release that pins the same frontend as the
+          # one before merges nothing, and the beta branch gets stable's
+          # upstream merges through guest-assistant, so the last upstream merge
+          # on the branch can name an older release.
+          if [ "$channel" != none ] && target=$(guest-assistant/script/upstream-targets "$channel"); then
+            set -- $target
+            if [ "$3" = "$frontend" ]; then core=$2; fi
+          fi
           case $channel in
             stable) suffix= ;;
             beta) suffix=-beta ;;

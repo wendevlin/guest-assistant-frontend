@@ -27,6 +27,8 @@ import {
   getSession,
   GuestApiError,
   setAppCookie,
+  signInWithLink,
+  takeLoginLinkToken,
 } from "./data/guest-api";
 import { GuestAuth } from "./data/guest-auth";
 import {
@@ -92,6 +94,12 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
   @state() private _dashboardUrlPath: string | null = null;
 
   @state() private _problem?: ConnectionProblem;
+
+  /** Why the login link did not sign the guest in, shown on the login form. */
+  @state() private _linkError?: "invalid" | "unavailable";
+
+  /** Token of the login link the page was opened with, until it was used. */
+  private _loginLinkToken?: string;
 
   private _problemTimer?: number;
 
@@ -163,6 +171,9 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     mainWindow.addEventListener("popstate", () => this._updateRoute());
     this._updateRoute();
 
+    if (!this._external) {
+      this._loginLinkToken = takeLoginLinkToken();
+    }
     this._restoreSession();
   }
 
@@ -230,6 +241,7 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
           <guest-assistant-login
             .localize=${this.localize}
             .language=${this.language}
+            .error=${this._linkErrorMessage()}
             @authenticated=${this._connect}
           ></guest-assistant-login>
         `;
@@ -266,6 +278,9 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
     }
     let session: Awaited<ReturnType<typeof getSession>>;
     try {
+      if (this._loginLinkToken) {
+        await this._signInWithLink(this._loginLinkToken);
+      }
       session = await getSession();
     } catch (err) {
       if (isConnectivityError(err)) {
@@ -284,8 +299,48 @@ export class HaGuestAssistant extends GuestAssistantBaseElement {
       this._view = "login";
       return;
     }
+    // Signed in from before: a login link that did not work does not matter.
+    this._linkError = undefined;
     this._userName = session.user.name || "Guest";
     await this._connect();
+  }
+
+  /**
+   * Signs in with the login link; an existing session is replaced. A link
+   * that does not work leads to the login form with the reason.
+   */
+  private async _signInWithLink(token: string) {
+    try {
+      await signInWithLink(token);
+    } catch (err) {
+      if (isConnectivityError(err)) {
+        throw err; // keep the token and retry with the session check
+      }
+      this._loginLinkToken = undefined;
+      this._linkError =
+        err instanceof GuestApiError && err.status === 403
+          ? "unavailable"
+          : "invalid";
+      return;
+    }
+    this._loginLinkToken = undefined;
+    this._linkError = undefined;
+  }
+
+  private _linkErrorMessage(): string | undefined {
+    switch (this._linkError) {
+      case "unavailable":
+        return (
+          this.localize?.("guest-assistant.login.error_unavailable") ||
+          "Your dashboard is currently not available. Please contact your host."
+        );
+      case "invalid":
+        return (
+          this.localize?.("guest-assistant.login.error_link") ||
+          "This login link no longer works. Ask your host for a new one, or sign in with your username and password."
+        );
+    }
+    return undefined;
   }
 
   /** Language picked on the login screen, before `hass` exists. */

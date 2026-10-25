@@ -1,3 +1,6 @@
+import { mainWindow } from "../../../src/common/dom/get_main_window";
+import { replaceCurrentUrl } from "../../../src/common/navigate";
+
 /**
  * Calls against the guest-assistant proxy. The proxy exposes a hardened
  * better-auth instance; only these endpoints are enabled there.
@@ -66,6 +69,35 @@ export const signIn = async (
   if (!res.ok) {
     throw new GuestApiError(res.status, "Sign in failed");
   }
+};
+
+/**
+ * Signs in with a login link (`/#login=<token>`). 401: the link is unknown
+ * (replaced or removed by the host), 403: the guest is switched off.
+ */
+export const signInWithLink = async (token: string): Promise<void> => {
+  const res = await request("/api/auth/sign-in/link", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    throw new GuestApiError(res.status, "Sign in with link failed");
+  }
+};
+
+/**
+ * Takes the login link token out of the address (`#login=<token>`), so it
+ * does not stay in the history or end up in a bookmark.
+ */
+export const takeLoginLinkToken = (): string | undefined => {
+  const match = /^#login=([A-Za-z0-9_-]+)$/.exec(mainWindow.location.hash);
+  if (!match) {
+    return undefined;
+  }
+  const { pathname, search } = mainWindow.location;
+  replaceCurrentUrl(`${pathname}${search}`);
+  return match[1];
 };
 
 export const signOut = async (): Promise<void> => {

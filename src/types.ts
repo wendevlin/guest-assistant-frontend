@@ -39,6 +39,11 @@ declare global {
   var __MAPLIBRE_WORKER_URL__: string;
   var __BACKWARDS_COMPAT__: boolean;
   var __HASS_URL__: string;
+  // Read by intl-polyfill before a polyfill replaces Intl.DateTimeFormat
+  var __haNativeTimeZone: string | undefined;
+  // Handshake between the app entry and the extra modules in index.html
+  var __haScopedRegistryReady: boolean | undefined;
+  var __haLoadExtraModules: (() => void) | undefined;
   /* eslint-enable @typescript-eslint/naming-convention */
 
   interface Window {
@@ -287,7 +292,7 @@ export interface HomeAssistantFormatters {
   formatEntityAttributeName(stateObj: HassEntity, attribute: string): string;
   formatEntityName(
     stateObj: HassEntity,
-    name: string | EntityNameItem | EntityNameItem[] | undefined,
+    name?: string | EntityNameItem | EntityNameItem[],
     options?: EntityNameOptions
   ): string;
 }

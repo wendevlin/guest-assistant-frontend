@@ -17,6 +17,7 @@
     "climate": "Climate",
     "home": "Overview",
     "maintenance": "Maintenance",
+    "marketplace": "Marketplace",
     "notfound": "Page not found"
   },
   "state": {
@@ -2968,7 +2969,7 @@
           },
           "marketplace": {
             "main": "Marketplace",
-            "secondary": "Install integrations, dashboard cards, themes, and templates shared by the community"
+            "secondary": "Install community integrations, dashboard content, themes, and templates"
           },
           "dashboards": {
             "main": "Dashboards",
@@ -3526,7 +3527,6 @@
           "introduction2": "Go to the area, device, or entity you want to add a label to, and press the edit button to assign labels to them.",
           "confirm_delete_title": "Delete label?",
           "confirm_delete": "Are you sure you want to delete label {label}? It will be removed from all areas, devices, and entities.",
-          "delete_selected": "Delete selected",
           "confirm_delete_selected_title": "Delete selected labels?",
           "confirm_delete_selected": "{count, plural,\n  one {The selected label will be removed from all areas, devices, and entities.}\n  other {The {count} selected labels will be removed from all areas, devices, and entities.}\n}",
           "delete_failed_title": "Delete failed",
@@ -4186,7 +4186,6 @@
           "create_automation": "Create automation",
           "confirm_delete_title": "Delete tag?",
           "confirm_delete": "The tag ''{tag}'' will be permanently deleted.",
-          "delete_selected": "Delete selected",
           "confirm_delete_selected_title": "Delete selected tags?",
           "confirm_delete_selected": "{count, plural,\n  one {The selected tag will be permanently deleted.}\n  other {The {count} selected tags will be permanently deleted.}\n}",
           "delete_failed_title": "Delete failed",
@@ -5206,7 +5205,6 @@
             },
             "confirm_delete_title": "Delete {dashboard_title}?",
             "confirm_delete_text": "This dashboard will be permanently deleted.",
-            "delete_selected": "Delete selected",
             "confirm_delete_selected_title": "Delete selected dashboards?",
             "confirm_delete_selected": "{count, plural,\n  one {The selected dashboard will be permanently deleted.}\n  other {The {count} selected dashboards will be permanently deleted.}\n}",
             "confirm_delete_selected_partly": "You can only delete {deletable} of the {selected} dashboards. The others are built-in or configured in YAML.",
@@ -6724,7 +6722,6 @@
             "blueprint_in_use_view_script": "View scripts",
             "confirm_delete_title": "Delete blueprint?",
             "confirm_delete_text": "{name} will be permanently deleted.",
-            "delete_selected": "Delete selected",
             "confirm_delete_selected_title": "Delete selected blueprints?",
             "confirm_delete_selected": "{count, plural,\n  one {The selected blueprint will be permanently deleted.}\n  other {The {count} selected blueprints will be permanently deleted.}\n}",
             "confirm_delete_selected_partly": "You can only delete {deletable} of the {selected} blueprints. The others are in use by automations or scripts.",
@@ -7805,7 +7802,8 @@
             "add_hardware": "Add hardware",
             "add_entity": "[%key:ui::panel::config::integrations::integration_page::add_entry%]",
             "add_system": "[%key:ui::panel::config::integrations::integration_page::add_entry%]",
-            "add_virtual": "[%key:ui::panel::config::integrations::integration_page::add_entry%]"
+            "add_virtual": "[%key:ui::panel::config::integrations::integration_page::add_entry%]",
+            "open_config_panel": "{name} settings"
           },
           "config_entry": {
             "application_credentials": {
@@ -12967,6 +12965,7 @@
           "intro": "Marketplace items are made by community contributors and are not reviewed by the Home\u00a0Assistant project. Treat them like plugins for any other software.",
           "risks_title": "Anything you install can",
           "risks": {
+            "access": "Access and control everything in Home\u00a0Assistant",
             "internet": "Connect to the internet",
             "data": "Share your data with others",
             "stability": "Slow down or crash Home\u00a0Assistant"
@@ -13002,8 +13001,7 @@
           "empty_header": "Nothing in the Marketplace yet",
           "empty_text": "The Marketplace gets its list from the community catalog, which could not be reached yet. The list shows up here once it loads.",
           "no_data": "No repositories matching search and filters",
-          "repository_not_found": "Repository not found",
-          "uninstall_selected": "Uninstall selected"
+          "repository_not_found": "Repository not found"
         },
         "entry": {
           "disabled": "The Marketplace is disabled. Enable it on the integration page to use it.",
@@ -13069,6 +13067,8 @@
           "already_installing": "This is already being installed, hold on.",
           "install_failed": "Installation failed. Check the Home Assistant logs for details.",
           "pre_release": "Pre-release",
+          "release_installed": "Installed",
+          "release_latest": "Latest",
           "install_intro": "This installs {name} version {version} in Home Assistant.",
           "update_intro": "This updates {name} from version {installed} to {version}.",
           "reinstall_intro": "This installs version {version} of {name} again.",

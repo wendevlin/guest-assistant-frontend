@@ -41,20 +41,25 @@ keyed=$(
 beta=$(printf '%s\n' "$keyed" | tail -n 1 | cut -d' ' -f2)
 stable=$(printf '%s\n' "$keyed" | grep -v 'b[0-9]*$' | tail -n 1 | cut -d' ' -f2)
 
+# raw.githubusercontent.com answers 429 now and then: curl retries that and
+# other transient errors (5xx, timeouts).
 frontend_of() {
-  version=$(curl -fsSL "$raw/$1/homeassistant/components/frontend/manifest.json" |
+  manifest=$(curl -fsSL --retry 5 --retry-delay 10 --retry-max-time 300 \
+    "$raw/$1/homeassistant/components/frontend/manifest.json") ||
+    { echo "Cannot fetch the frontend manifest of core $1" >&2; exit 1; }
+  version=$(printf '%s\n' "$manifest" |
     sed -n 's/.*"home-assistant-frontend==\([0-9]\{8\}\.[0-9]*\)".*/\1/p')
   [ -n "$version" ] || { echo "Core $1 does not pin a frontend version" >&2; exit 1; }
   echo "$version"
 }
 
+# Each version is looked up on its own line: a failing $(...) inside an echo
+# argument would not stop the script, and print the channel without one.
 if [ "$only" != beta ]; then
-  echo "stable $stable $(frontend_of "$stable")"
+  frontend=$(frontend_of "$stable")
+  echo "stable $stable $frontend"
 fi
 if [ "$only" != stable ]; then
-  if [ "$beta" = "$stable" ]; then
-    echo "beta $stable $(frontend_of "$stable")"
-  else
-    echo "beta $beta $(frontend_of "$beta")"
-  fi
+  frontend=$(frontend_of "$beta")
+  echo "beta $beta $frontend"
 fi

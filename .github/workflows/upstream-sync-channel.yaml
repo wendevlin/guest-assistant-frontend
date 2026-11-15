@@ -36,9 +36,13 @@ jobs:
         env:
           CHANNEL: ${{ inputs.channel }}
         run: |
+          # On its own line, so a failed lookup fails the step (a $(...) in a
+          # here-document does not).
+          target=$(guest-assistant/script/upstream-targets "$CHANNEL")
           read -r _ core frontend <<EOF
-          $(guest-assistant/script/upstream-targets "$CHANNEL")
+          $target
           EOF
+          [ -n "$frontend" ] || { echo "No frontend version for $CHANNEL: $target" >&2; exit 1; }
           echo "Channel $CHANNEL follows Home Assistant $core (frontend $frontend)"
           echo "core=$core" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"

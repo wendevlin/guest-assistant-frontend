@@ -923,7 +923,7 @@ class HaSceneDashboard extends SubscribeMixin(LitElement) {
     const promises: Promise<UpdateEntityRegistryEntryResult>[] = [];
     this._selected.forEach((entityId) => {
       promises.push(
-        updateEntityRegistryEntry(this.hass, entityId, {
+        updateEntityRegistryEntry(this.hass.callWS, entityId, {
           categories: { scene: category },
         })
       );
@@ -960,7 +960,7 @@ ${rejected
     const promises: Promise<UpdateEntityRegistryEntryResult>[] = [];
     this._selected.forEach((entityId) => {
       promises.push(
-        updateEntityRegistryEntry(this.hass, entityId, {
+        updateEntityRegistryEntry(this.hass.callWS, entityId, {
           labels:
             action === "add"
               ? this.hass.entities[entityId].labels.concat(label)
@@ -1004,7 +1004,7 @@ ${rejected
     const promises: Promise<UpdateEntityRegistryEntryResult>[] = [];
     this._selected.forEach((entityId) => {
       promises.push(
-        updateEntityRegistryEntry(this.hass, entityId, {
+        updateEntityRegistryEntry(this.hass.callWS, entityId, {
           area_id: area,
         })
       );
@@ -1135,7 +1135,7 @@ ${rejected
       updateConfig: async (newConfig, entityRegistryUpdate) => {
         await saveScene(this.hass, scene.attributes.id!, newConfig);
         if (entityRegEntry) {
-          await updateEntityRegistryEntry(this.hass, scene.entity_id, {
+          await updateEntityRegistryEntry(this.hass.callWS, scene.entity_id, {
             area_id: entityRegistryUpdate.area || null,
             labels: entityRegistryUpdate.labels,
             categories: { scene: entityRegistryUpdate.category || null },
@@ -1226,12 +1226,10 @@ ${rejected
           .slot=${slot}
           .value=${`label_${label.label_id}`}
           .action=${selected ? "remove" : "add"}
+          type="checkbox"
+          .checked=${selected}
+          .indeterminate=${partial}
         >
-          <ha-checkbox
-            slot="icon"
-            .checked=${selected}
-            .indeterminate=${partial}
-          ></ha-checkbox>
           <ha-label .color=${label.color} .description=${label.description}>
             ${
               label.icon

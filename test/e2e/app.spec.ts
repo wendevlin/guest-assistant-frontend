@@ -338,7 +338,7 @@ test.describe("System log reporting", () => {
   }) => {
     await goToPanel(page, "/?scenario=system-log-reporting#/config/logs");
     await page
-      .locator("system-log-card ha-list-item")
+      .locator("system-log-card ha-list-item-button")
       .filter({ hasText: "Delayed manifest error" })
       .click();
     const detail = page.locator("dialog-system-log-detail");
@@ -351,7 +351,7 @@ test.describe("System log reporting", () => {
     await detail.getByRole("button", { name: "Close", exact: true }).click();
     await expect(detail.locator("ha-dialog")).not.toBeAttached();
     await page
-      .locator("system-log-card ha-list-item")
+      .locator("system-log-card ha-list-item-button")
       .filter({ hasText: "Built-in integration error" })
       .click();
     await page.evaluate(() => window.resolveReportManifest?.());
@@ -521,10 +521,40 @@ test.describe("Lovelace dashboard", () => {
       page.locator("[data-testid='edit-mode-button'], ha-menu-button")
     ).toBeAttached({ timeout: QUICK_TIMEOUT });
   });
+
+  test("going back after leaving edit mode does not enter it again", async ({
+    page,
+  }) => {
+    // A demo dashboard with more than one view
+    await goToPanel(page, "/?demo=teachingbirds&edit=1#/lovelace/home");
+    const root = page.locator("hui-root").first();
+    const isEditing = () =>
+      root.evaluate(
+        (el) =>
+          (el as HTMLElement & { lovelace?: { editMode: boolean } }).lovelace
+            ?.editMode
+      );
+    await expect.poll(isEditing, { timeout: PANEL_TIMEOUT }).toBe(true);
+
+    // Leaves /lovelace/home behind with ?edit=1 in its URL
+    await root.locator("ha-tab-group-tab[panel='1']").click();
+    await expect(page).toHaveURL(/#\/lovelace\/home_info$/, {
+      timeout: QUICK_TIMEOUT,
+    });
+    await root.locator("ha-button.exit-edit-mode").click();
+    await expect.poll(isEditing, { timeout: QUICK_TIMEOUT }).toBe(false);
+
+    await page.goBack();
+
+    await expect(page).toHaveURL(/\/\?demo=teachingbirds#\/lovelace\/home$/, {
+      timeout: QUICK_TIMEOUT,
+    });
+    expect(await isEditing()).toBe(false);
+  });
 });
 
 test.describe("Energy dashboard", () => {
-  test("returns to Energy after repeatedly opening the device dialog", async ({
+  test("returns to Energy after repeatedly opening the device editor", async ({
     page,
   }) => {
     const errors = trackPageErrors(page);
@@ -567,17 +597,17 @@ test.describe("Energy dashboard", () => {
       .locator("ha-energy-device-settings")
       .locator("ha-button")
       .first();
-    const openAndCancelDeviceDialog = async () => {
+    const editorPage = page.locator("ha-energy-editor-page");
+    const openAndCloseDeviceEditor = async () => {
       await addDevice.click();
-      const dialog = page.locator("dialog-energy-device-settings");
-      const cancel = dialog.locator("ha-dialog-footer ha-button").first();
-      await expect(cancel).toBeVisible({ timeout: QUICK_TIMEOUT });
-      await cancel.click();
-      await expect(cancel).toBeHidden({ timeout: QUICK_TIMEOUT });
+      const back = editorPage.getByRole("link", { name: "Back" });
+      await expect(back).toBeVisible({ timeout: QUICK_TIMEOUT });
+      await back.click();
+      await expect(editorPage).toHaveCount(0, { timeout: QUICK_TIMEOUT });
     };
-    await openAndCancelDeviceDialog();
-    await openAndCancelDeviceDialog();
-    await openAndCancelDeviceDialog();
+    await openAndCloseDeviceEditor();
+    await openAndCloseDeviceEditor();
+    await openAndCloseDeviceEditor();
 
     await backLink.click();
 
@@ -811,6 +841,120 @@ test.describe("Theming", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Config panel", () => {
+  test("searches for a zone with the keyboard without leaking Enter", async ({
+    page,
+  }) => {
+    const response = Promise.withResolvers<undefined>();
+    let searches = 0;
+    await page.route(
+      "https://nominatim.openstreetmap.org/search.php**",
+      async (route) => {
+        searches++;
+        await response.promise;
+        await route.fulfill({
+          json: [
+            {
+              place_id: 1,
+              name: "Paris",
+              display_name: "Paris, Ile-de-France, France",
+              category: "place",
+              type: "city",
+              lat: "48.8566",
+              lon: "2.3522",
+              address: { state: "Ile-de-France", country: "France" },
+            },
+          ],
+        });
+      }
+    );
+
+    await goToPanel(page, "/config/zone/new");
+    const selector = page.locator("ha-selector-location");
+    await selector.evaluate((element) => {
+      element.addEventListener("keydown", (event) => {
+        if (event instanceof KeyboardEvent && event.key === "Enter") {
+          element.setAttribute("data-enter-bubbled", "");
+        }
+      });
+    });
+    const input = selector.getByRole("textbox", { name: "Search address" });
+    await input.fill("Paris");
+    const compositionPrevented = await input.evaluate((element) => {
+      const event = new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        isComposing: true,
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(compositionPrevented).toBe(false);
+    await expect(selector).not.toHaveAttribute("data-enter-bubbled");
+    expect(searches).toBe(0);
+
+    await input.press("Enter");
+    await expect(input).toBeFocused();
+    await expect(input).toBeEnabled();
+    await expect(input).not.toBeEditable();
+    await input.press("x");
+    await input.press("Enter");
+    await expect(input).toHaveValue("Paris");
+    response.resolve(undefined);
+
+    const result = selector.getByRole("button", {
+      name: "Paris Ile-de-France, France",
+      exact: true,
+    });
+    const status = selector.getByRole("status");
+    await expect(result).toBeVisible();
+    await expect(input).toBeEditable();
+    await expect(status).toHaveText("1 result for ‘Paris’");
+    expect(searches).toBe(1);
+
+    await selector.locator("ha-list-item-button").focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      selector.getByRole("spinbutton", { name: "Latitude*", exact: true })
+    ).toHaveValue("48.8566");
+    await expect(
+      selector.getByRole("spinbutton", { name: "Longitude*", exact: true })
+    ).toHaveValue("2.3522");
+    await expect(result).not.toBeAttached();
+    await expect(input).toBeFocused();
+    await expect(status).toHaveText("Selected Paris, Ile-de-France, France");
+
+    const searchFromButton = async (key: "Enter" | "Space") => {
+      await selector
+        .getByRole("button", { name: "Search", exact: true })
+        .press(key);
+      await expect(result).toBeVisible();
+      await expect(input).toBeFocused();
+      await selector.locator("ha-list-item-button").focus();
+      await page.keyboard.press(key);
+      await expect(result).not.toBeAttached();
+      await expect(input).toBeFocused();
+    };
+    await searchFromButton("Enter");
+    await searchFromButton("Space");
+    expect(searches).toBe(3);
+
+    await page
+      .context()
+      .route("https://www.openstreetmap.org/", (route) =>
+        route.fulfill({ body: "" })
+      );
+    const popupPromise = page.waitForEvent("popup");
+    await selector
+      .getByRole("link", { name: "OpenStreetMap", exact: true })
+      .press("Enter");
+    const popup = await popupPromise;
+    await popup.close();
+    await expect(selector).not.toHaveAttribute("data-enter-bubbled");
+  });
+
   test("config panel loads without JS errors", async ({ page }) => {
     const errors = trackPageErrors(page);
 

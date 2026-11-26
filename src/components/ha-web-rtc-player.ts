@@ -25,8 +25,23 @@ import { showToast } from "../util/toast";
 
 const HIDDEN_CLEANUP_DELAY = 60000;
 
+// How long the backend gets to answer the offer, it has to connect to the camera
+const ANSWER_TIMEOUT = 20000;
+
+// How long finding a network path gets after the answer. Browsers can take
+// minutes to give up on their own, or never do.
+const ICE_TIMEOUT = 30000;
+
+// How often a stream that lost its connection or got a backend error is
+// started again. A new connection that gets no answer or finds no path is not
+// retried, as a retry would most likely end the same way.
+const MAX_RETRIES = 1;
+
+// Gives the backend time to tear down the failed session before the next one
+const RETRY_DELAY = 1000;
+
 interface WebRtcPlayerError {
-  type: "not_supported" | "start_failed" | "connect_failed";
+  type: "not_supported" | "start_failed" | "connect_failed" | "no_connection";
   message?: string;
 }
 
@@ -100,10 +115,15 @@ export class HaWebRtcPlayer extends LitElement {
     if (this._microphoneDenied) {
       return "denied";
     }
-    if (this._microphoneConnecting) {
+    if (this._microphoneConnecting || this._retryMicrophoneTrack) {
       return "connecting";
     }
     return this._localReturnAudioTrack ? "on" : "off";
+  }
+
+  /** The video that plays the stream, undefined while showing an error. */
+  public get videoElement(): HTMLVideoElement | undefined {
+    return this._videoEl ?? undefined;
   }
 
   public get microphoneTrack(): MediaStreamTrack | undefined {
@@ -111,11 +131,17 @@ export class HaWebRtcPlayer extends LitElement {
   }
 
   public async toggleMicrophone() {
-    if (this._localReturnAudioTrack || this._microphoneConnecting) {
+    if (
+      this._localReturnAudioTrack ||
+      this._microphoneConnecting ||
+      this._retryMicrophoneTrack
+    ) {
       // Stop (not disable) so the browser releases the microphone, also cancels connecting
       this._microphoneRequest++;
       this._localReturnAudioTrack?.stop();
       this._localReturnAudioTrack = undefined;
+      this._retryMicrophoneTrack?.stop();
+      this._retryMicrophoneTrack = undefined;
       this._microphoneConnecting = false;
       this._fireMicrophoneChanged();
       await this._microphoneSender?.replaceTrack(null).catch(() => undefined);
@@ -198,6 +224,18 @@ export class HaWebRtcPlayer extends LitElement {
 
   private _cleanUpCount = 0;
 
+  private _connectTimeout?: number;
+
+  private _retryTimeout?: number;
+
+  private _retryMicrophoneTrack?: MediaStreamTrack;
+
+  private _retries = 0;
+
+  // The stream showed video since it was started, so a lost connection is
+  // worth a retry
+  private _hasPlayed = false;
+
   private _handleVisibilityChange = () => {
     if (document.pictureInPictureElement) {
       // video is playing in picture-in-picture mode, don't do anything
@@ -219,7 +257,7 @@ export class HaWebRtcPlayer extends LitElement {
       clearTimeout(this._hiddenCleanupTimeout);
       this._hiddenCleanupTimeout = undefined;
     } else {
-      this._startWebRtc();
+      this._restartWebRtc();
     }
   };
 
@@ -260,7 +298,7 @@ export class HaWebRtcPlayer extends LitElement {
   public override connectedCallback() {
     super.connectedCallback();
     if (this.hasUpdated && this.entityid) {
-      this._startWebRtc();
+      this._restartWebRtc();
     }
     document.addEventListener("visibilitychange", this._handleVisibilityChange);
   }
@@ -281,6 +319,13 @@ export class HaWebRtcPlayer extends LitElement {
     if (!changedProperties.has("entityid")) {
       return;
     }
+    this._restartWebRtc();
+  }
+
+  /** Starts a new stream, not a retry of the current one. */
+  private _restartWebRtc() {
+    this._retries = 0;
+    this._hasPlayed = false;
     this._startWebRtc();
   }
 
@@ -422,13 +467,15 @@ export class HaWebRtcPlayer extends LitElement {
     while (this._candidatesList.length) {
       const candidate = this._candidatesList.pop();
       if (candidate) {
-        candidates += `a=${candidate}\r\n`;
+        candidates += `a=${candidate.candidate}\r\n`;
       }
     }
 
     const offer_sdp = offer.sdp! + candidates;
 
     this._logEvent("start webRtcOffer", offer_sdp);
+
+    this._startConnectTimeout(ANSWER_TIMEOUT);
 
     this._unsub = webRtcOffer(
       this._connection,
@@ -450,10 +497,60 @@ export class HaWebRtcPlayer extends LitElement {
       "ice connection state change",
       this._peerConnection?.iceConnectionState
     );
-    if (this._peerConnection?.iceConnectionState === "failed") {
-      this._peerConnection.restartIce();
+    const iceState = this._peerConnection?.iceConnectionState;
+    if (iceState === "connected" || iceState === "completed") {
+      clearTimeout(this._connectTimeout);
+      this._connectTimeout = undefined;
+    } else if (iceState === "failed") {
+      // An ICE restart needs a new offer, which the backend answers from a new
+      // peer that can't continue this connection, so start a new one instead.
+      this._retryOrFail({ type: "no_connection" });
     }
   };
+
+  private _startConnectTimeout(timeout: number) {
+    clearTimeout(this._connectTimeout);
+    this._connectTimeout = window.setTimeout(() => {
+      this._connectTimeout = undefined;
+      this._logEvent("connect timeout");
+      this._retryOrFail({ type: "no_connection" });
+    }, timeout);
+  }
+
+  private _retryOrFail(error: WebRtcPlayerError) {
+    if (
+      this._retries >= MAX_RETRIES ||
+      // No answer or no path for a stream that never played, a retry would
+      // most likely end the same way
+      (error.type === "no_connection" && !this._hasPlayed) ||
+      // A microphone connect the user started is handled by starting again
+      // without the microphone. A retry keeps the microphone of the stream.
+      (this._localReturnAudioTrack &&
+        this._microphoneConnecting &&
+        this._retries === 0)
+    ) {
+      this._failStart(error);
+      return;
+    }
+    this._retries++;
+    this._logEvent("retry", this._retries, error);
+    // Keep showing the last frame instead of the poster while starting again
+    this._captureReconnectFrame();
+    // Taken out before the clean up, so a running microphone is not stopped
+    const microphoneTrack = this._localReturnAudioTrack;
+    this._localReturnAudioTrack = undefined;
+    this._cleanUp();
+    if (microphoneTrack) {
+      this._retryMicrophoneTrack = microphoneTrack;
+      this._fireMicrophoneChanged();
+    }
+    this._retryTimeout = window.setTimeout(() => {
+      this._retryTimeout = undefined;
+      const track = this._retryMicrophoneTrack;
+      this._retryMicrophoneTrack = undefined;
+      this._startWebRtc(track);
+    }, RETRY_DELAY);
+  }
 
   private async _handleOfferEvent(
     peerConnection: RTCPeerConnection,
@@ -477,6 +574,10 @@ export class HaWebRtcPlayer extends LitElement {
       this._candidatesList = [];
     }
     if (event.type === "answer") {
+      const iceState = peerConnection.iceConnectionState;
+      if (iceState !== "connected" && iceState !== "completed") {
+        this._startConnectTimeout(ICE_TIMEOUT);
+      }
       this._logEvent("answer", event.answer);
 
       this._handleAnswer(peerConnection, event);
@@ -502,7 +603,8 @@ export class HaWebRtcPlayer extends LitElement {
       }
     }
     if (event.type === "error") {
-      this._failStart({ type: "start_failed", message: event.message });
+      // Often temporary, like the backend still closing the previous session
+      this._retryOrFail({ type: "start_failed", message: event.message });
     }
   }
 
@@ -534,10 +636,7 @@ export class HaWebRtcPlayer extends LitElement {
     if (!this._remoteStream) {
       return;
     }
-    // If the track is audio and the player is muted, we do not add it to the stream.
-    if (event.track.kind === "audio" && this.muted) {
-      return;
-    }
+    // Audio is always added, even when muted, so it can be unmuted later
     this._remoteStream.addTrack(event.track);
     if (!this.hasUpdated) {
       await this.updateComplete;
@@ -594,8 +693,13 @@ export class HaWebRtcPlayer extends LitElement {
   }
 
   private _failStart(error: WebRtcPlayerError) {
-    // The camera can reject the microphone, keep the video running without it
-    if (this._localReturnAudioTrack && this._microphoneConnecting) {
+    // The camera can reject the microphone, keep the video running without it.
+    // After retries it is the connection that failed, not the microphone.
+    if (
+      this._localReturnAudioTrack &&
+      this._microphoneConnecting &&
+      this._retries === 0
+    ) {
       showToast(this, {
         message: this._localize(
           "ui.components.web-rtc-player.microphone_connect_failed",
@@ -606,12 +710,19 @@ export class HaWebRtcPlayer extends LitElement {
       return;
     }
     this._error = error;
+    this._reconnectPoster = undefined;
     this._cleanUp();
+    // Tell the camera stream this player has no video, so it can fall back
+    fireEvent(this, "streams", { hasAudio: false, hasVideo: false });
   }
 
   private _cleanUp() {
     this._cleanUpCount++;
     this._microphoneRequest++;
+    clearTimeout(this._connectTimeout);
+    this._connectTimeout = undefined;
+    clearTimeout(this._retryTimeout);
+    this._retryTimeout = undefined;
     if (this._remoteStream) {
       this._remoteStream.getTracks().forEach((track) => {
         track.stop();
@@ -619,9 +730,15 @@ export class HaWebRtcPlayer extends LitElement {
 
       this._remoteStream = undefined;
     }
-    if (this._localReturnAudioTrack || this._microphoneConnecting) {
+    if (
+      this._localReturnAudioTrack ||
+      this._microphoneConnecting ||
+      this._retryMicrophoneTrack
+    ) {
       this._localReturnAudioTrack?.stop();
       this._localReturnAudioTrack = undefined;
+      this._retryMicrophoneTrack?.stop();
+      this._retryMicrophoneTrack = undefined;
       this._microphoneConnecting = false;
       this._fireMicrophoneChanged();
     }
@@ -673,6 +790,8 @@ export class HaWebRtcPlayer extends LitElement {
 
     this._logEvent("loadedData", data);
     this._stopTimer();
+    this._retries = 0;
+    this._hasPlayed = true;
 
     // Without a track the microphone is still waiting for permission
     if (this._microphoneConnecting && this._localReturnAudioTrack) {
@@ -731,6 +850,13 @@ export class HaWebRtcPlayer extends LitElement {
     video {
       width: 100%;
       max-height: var(--video-max-height, calc(100vh - 97px));
+    }
+
+    /* Scrolls in a player that is only as high as its picture */
+    ha-alert {
+      display: block;
+      max-height: 100%;
+      overflow: auto;
     }
 
     .reconnecting {

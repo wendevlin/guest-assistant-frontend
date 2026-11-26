@@ -138,6 +138,9 @@ export const coreCards: Card[] = [
     type: "todo-list",
   },
   {
+    type: "timer-list",
+  },
+  {
     type: "heading",
     showElement: true,
   },
@@ -206,6 +209,14 @@ export const energyCards: Card[] = [
   },
   {
     type: "water-flow-sankey",
+    showElement: false,
+  },
+  {
+    type: "gas-sankey",
+    showElement: false,
+  },
+  {
+    type: "gas-flow-sankey",
     showElement: false,
   },
   {

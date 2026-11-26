@@ -1,9 +1,12 @@
 import {
   mdiAccount,
+  mdiArrowLeft,
+  mdiArrowRight,
   mdiCodeBraces,
   mdiCommentProcessingOutline,
   mdiDevices,
   mdiDotsVertical,
+  mdiDragHorizontalVariant,
   mdiFileMultiple,
   mdiFormatListBulletedTriangle,
   mdiHelpCircleOutline,
@@ -29,6 +32,7 @@ import { UndoRedoController } from "../../common/controllers/undo-redo-controlle
 import { fireEvent } from "../../common/dom/fire_event";
 import type { HASSDomEvent } from "../../common/dom/fire_event";
 import { ctrlOrCmdLabel } from "../../common/keyboard/ctrl-or-cmd";
+import type { NavigateOptions } from "../../common/navigate";
 import { goBack, navigate, replaceCurrentUrl } from "../../common/navigate";
 import type { LocalizeKeys } from "../../common/translations/localize";
 import { constructUrlCurrentPath } from "../../common/url/construct-url";
@@ -38,6 +42,7 @@ import {
   extractSearchParamsObject,
   removeSearchParam,
 } from "../../common/url/search-params";
+import { computeRTL } from "../../common/util/compute_rtl";
 import { afterNextRender } from "../../common/util/render-status";
 import "../../components/ha-button";
 import type { HaDropdownSelectEvent } from "../../components/ha-dropdown";
@@ -45,7 +50,6 @@ import "../../components/ha-dropdown";
 import "../../components/ha-dropdown-item";
 import "../../components/ha-icon";
 import "../../components/ha-icon-button";
-import "../../components/ha-icon-button-arrow-next";
 import "../../components/ha-icon-button-arrow-prev";
 import "../../components/ha-menu-button";
 import "../../components/ha-svg-icon";
@@ -87,7 +91,7 @@ import { showNewAutomationDialog } from "../config/automation/show-dialog-new-au
 import { showAddIntegrationDialog } from "../config/integrations/show-add-integration-dialog";
 import { showDashboardDetailDialog } from "../config/lovelace/dashboards/show-dialog-lovelace-dashboard-detail";
 import { showPersonDetailDialog } from "../config/person/show-dialog-person-detail";
-import { swapView } from "./editor/config-util";
+import { indexAfterMove, moveView } from "./editor/config-util";
 import { showDashboardStrategyEditorDialog } from "./editor/dashboard-strategy-editor/dialogs/show-dialog-dashboard-strategy-editor";
 import { showSaveDialog } from "./editor/show-save-config-dialog";
 import { showEditViewDialog } from "./editor/view-editor/show-edit-view-dialog";
@@ -195,6 +199,8 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
         html`<ha-icon-button
             slot="toolbar-icon"
             .path=${mdiUndo}
+            .label=${this.hass.localize("ui.common.undo")}
+            hide-title
             @click=${this._undo}
             .disabled=${!this._undoRedoController.canUndo}
             id="button-undo"
@@ -206,6 +212,8 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
           <ha-icon-button
             slot="toolbar-icon"
             .path=${mdiRedo}
+            .label=${this.hass.localize("ui.common.redo")}
+            hide-title
             @click=${this._redo}
             .disabled=${!this._undoRedoController.canRedo}
             id="button-redo"
@@ -272,7 +280,7 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
         subItems: [
           {
             icon: mdiDevices,
-            key: "ui.panel.lovelace.menu.add_device",
+            key: "ui.panel.lovelace.menu.add_device_or_integration",
             visible: true,
             action: this._addDevice,
             overflowAction: this._addDevice,
@@ -475,9 +483,18 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
         !view.visible.some((e) => e.user === this.hass!.user?.id)) ||
         view.visible === false);
 
+    // The move buttons point and are labelled in the on-screen direction.
+    const rtl = computeRTL(
+      this.hass.language,
+      this.hass.translationMetadata.translations
+    );
+
     const tabs = html`<ha-tab-group
       .active=${typeof this._curView === "number" ? String(this._curView) : ""}
+      .sortable=${this._editMode}
+      handle-selector=".handle"
       @wa-tab-show=${this._handleViewSelected}
+      @item-moved=${this._viewMoved}
     >
       ${views.map((view, index) => {
         const icon_and_title =
@@ -516,6 +533,9 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
             .active=${current}
             .disabled=${hidden}
             aria-label=${ifDefined(view.title)}
+            aria-keyshortcuts=${ifDefined(
+              this._editMode ? "Alt+ArrowUp Alt+ArrowDown" : undefined
+            )}
             data-path=${view.path || index}
             @auxclick=${this._handleViewTabNewTabClick}
             @click=${this._handleViewTabNewTabClick}
@@ -528,31 +548,37 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
             ${
               this._editMode
                 ? html`
-                    <ha-icon-button-arrow-prev
+                    <ha-svg-icon
+                      class="edit-icon view handle"
+                      .path=${mdiDragHorizontalVariant}
+                    ></ha-svg-icon>
+                    <ha-icon-button
                       .label=${this.hass!.localize(
-                        "ui.panel.lovelace.editor.edit_view.move_left"
+                        `ui.panel.lovelace.editor.edit_view.${rtl ? "move_right" : "move_left"}`
                       )}
-                      class="edit-icon view"
-                      @click=${this._moveViewLeft}
-                      .disabled=${this._curView === 0}
-                    ></ha-icon-button-arrow-prev>
+                      .path=${rtl ? mdiArrowRight : mdiArrowLeft}
+                      class="edit-icon view move move-prev"
+                      @click=${this._moveViewPrev}
+                      .disabled=${index === 0}
+                    ></ha-icon-button>
                     ${tabContent}
                     <ha-icon-button
-                      .title=${this.hass!.localize(
+                      .label=${this.hass!.localize(
                         "ui.panel.lovelace.editor.edit_view.edit"
                       )}
                       class="edit-icon view"
                       .path=${mdiPencil}
                       @click=${this._editView}
                     ></ha-icon-button>
-                    <ha-icon-button-arrow-next
+                    <ha-icon-button
                       .label=${this.hass!.localize(
-                        "ui.panel.lovelace.editor.edit_view.move_right"
+                        `ui.panel.lovelace.editor.edit_view.${rtl ? "move_left" : "move_right"}`
                       )}
-                      class="edit-icon view"
-                      @click=${this._moveViewRight}
-                      .disabled=${(this._curView! as number) + 1 === views.length}
-                    ></ha-icon-button-arrow-next>
+                      .path=${rtl ? mdiArrowLeft : mdiArrowRight}
+                      class="edit-icon view move move-next"
+                      @click=${this._moveViewNext}
+                      .disabled=${index === views.length - 1}
+                    ></ha-icon-button>
                   `
                 : tabContent
             }
@@ -685,6 +711,13 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
 
   private _handlePopState = () => {
     this._restoreScroll = true;
+    // Edit mode is not part of history. An entry left while editing keeps
+    // ?edit=1, so going back to it after leaving edit mode must not enter it
+    // again: sync the URL to the current mode instead.
+    if (!this.lovelace?.editMode && extractSearchParamsObject().edit === "1") {
+      this._clearParam("edit");
+      return;
+    }
     this._handleUrlChanged();
   };
 
@@ -810,7 +843,12 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
 
       if (!viewPath && views.length) {
         newSelectView = views.findIndex(this._isVisible);
-        this._navigateToView(views[newSelectView].path || newSelectView, true);
+        // Filling in the default view keeps the entry as is: a dialog restored
+        // from the URL, like a more-info deep link, can already be open.
+        this._navigateToView(views[newSelectView].path || newSelectView, {
+          replace: true,
+          keepDialogs: true,
+        });
       } else if (viewPath === "hass-unused-entities") {
         newSelectView = "hass-unused-entities";
       } else if (viewPath) {
@@ -844,10 +882,9 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
           viewPath === "hass-unused-entities"
         ) {
           newSelectView = views.findIndex(this._isVisible);
-          this._navigateToView(
-            views[newSelectView].path || newSelectView,
-            true
-          );
+          this._navigateToView(views[newSelectView].path || newSelectView, {
+            replace: true,
+          });
         }
       }
 
@@ -1176,7 +1213,7 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
     });
   }
 
-  private _navigateToView(path: string | number, replace?: boolean) {
+  private _navigateToView(path: string | number, options?: NavigateOptions) {
     if (this.embedded) {
       fireEvent(this, "view-navigate", { path: String(path) });
 
@@ -1187,7 +1224,7 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
 
     const currentUrl = `${location.pathname}${location.search}`;
     if (currentUrl !== url) {
-      navigate(url, { replace });
+      navigate(url, options);
     }
   }
 
@@ -1227,34 +1264,62 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
     });
   }
 
-  private _moveViewLeft(ev) {
+  private _viewMoved(ev: HASSDomEvent<HASSDomEvents["item-moved"]>) {
     ev.stopPropagation();
-    if (this._curView === 0) {
-      return;
-    }
-    const lovelace = this.lovelace!;
-    const oldIndex = this._curView as number;
-    const newIndex = (this._curView as number) - 1;
-    if (!this.config.views[oldIndex].path) {
-      this._navigateToView(newIndex, true);
-    }
-    lovelace.saveConfig(swapView(lovelace.config, oldIndex, newIndex));
-    this._selectView(newIndex);
+    this._moveView(ev.detail.oldIndex, ev.detail.newIndex);
   }
 
-  private _moveViewRight(ev) {
+  private _moveViewPrev(ev: Event) {
     ev.stopPropagation();
-    if ((this._curView! as number) + 1 === this.lovelace!.config.views.length) {
+    const index = this._curView as number;
+    this._moveView(index, index - 1);
+  }
+
+  private _moveViewNext(ev: Event) {
+    ev.stopPropagation();
+    const index = this._curView as number;
+    this._moveView(index, index + 1);
+  }
+
+  private async _moveView(oldIndex: number, newIndex: number) {
+    if (oldIndex === newIndex) {
       return;
     }
+    const focused = this.shadowRoot!.activeElement;
+    const focusedTab = focused?.closest("ha-tab-group-tab");
     const lovelace = this.lovelace!;
-    const oldIndex = this._curView as number;
-    const newIndex = (this._curView as number) + 1;
-    if (!this.config.views[oldIndex].path) {
-      this._navigateToView(newIndex, true);
+    const curView = this._curView;
+    let newCurView = curView;
+    if (typeof curView === "number") {
+      newCurView = indexAfterMove(curView, oldIndex, newIndex);
+      // Views without a path are addressed by their index in the URL
+      if (newCurView !== curView && !this.config.views[curView].path) {
+        this._navigateToView(newCurView, { replace: true });
+      }
     }
-    lovelace.saveConfig(swapView(lovelace.config, oldIndex, newIndex));
-    this._selectView(newIndex);
+    lovelace.saveConfig(moveView(lovelace.config, oldIndex, newIndex));
+    this._selectView(newCurView);
+
+    // Tabs are rendered by position, so focus has to follow the moved view.
+    if (!focusedTab) {
+      return;
+    }
+    const focusedIndex = indexAfterMove(
+      Number(focusedTab.getAttribute("panel")),
+      oldIndex,
+      newIndex
+    );
+    await this.updateComplete;
+    const tab = this.shadowRoot!.querySelector<HTMLElement>(
+      `ha-tab-group-tab[panel="${focusedIndex}"]`
+    );
+    const moveClass = ["move-prev", "move-next"].find((cls) =>
+      focused!.classList.contains(cls)
+    );
+    const button = moveClass
+      ? tab?.querySelector<HTMLElement & { disabled: boolean }>(`.${moveClass}`)
+      : undefined;
+    (button && !button.disabled ? button : tab)?.focus();
   }
 
   private _addView() {
@@ -1585,6 +1650,24 @@ class HUIRoot extends KeyboardShortcutMixin(LitElement) {
         }
         .edit-icon.view {
           display: none;
+        }
+        /* Only shown while focused, for keyboard and screen reader users */
+        .edit-icon.move:not(:focus-within) {
+          position: absolute;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          height: 1px;
+          width: 1px;
+          margin: -1px;
+          padding: 0;
+          border: 0;
+        }
+        .edit-icon.handle {
+          padding: var(--ha-space-3);
+          cursor: move; /* fallback if grab cursor is unsupported */
+          cursor: grab;
+          /* Drag the tab instead of scrolling the tab bar */
+          touch-action: none;
         }
         #add-view {
           white-space: nowrap;

@@ -128,6 +128,8 @@ import "./types/ha-automation-action-wait_for_trigger";
 import "./types/ha-automation-action-wait_template";
 import { renderCtrlOrCmd } from "../../../../common/keyboard/ctrl-or-cmd";
 import { scrollRowIntoView } from "../scroll-row-into-view";
+import { AutomationPathController } from "../automation-path";
+import { renderRowErrorIcon } from "../automation-error-templates";
 
 export interface ActionElement extends LitElement {
   action: Action;
@@ -182,6 +184,8 @@ export default class HaAutomationActionRow extends LitElement {
 
   @property({ type: Boolean }) public root = false;
 
+  @property({ attribute: false }) public index!: number;
+
   @property({ type: Boolean }) public first?: boolean;
 
   @property({ type: Boolean }) public last?: boolean;
@@ -193,6 +197,11 @@ export default class HaAutomationActionRow extends LitElement {
 
   @property({ type: Boolean, attribute: "sort-selected" })
   public sortSelected = false;
+
+  protected readonly pathController = new AutomationPathController(this, {
+    segment: () => [this.index],
+    row: () => (this.optionsInSidebar ? this : undefined),
+  });
 
   @storage({
     key: "automationClipboard",
@@ -246,6 +255,10 @@ export default class HaAutomationActionRow extends LitElement {
 
   get selected() {
     return this._selected;
+  }
+
+  get collapsed() {
+    return this._collapsed;
   }
 
   protected firstUpdated(changedProperties: PropertyValues<this>): void {
@@ -490,6 +503,12 @@ export default class HaAutomationActionRow extends LitElement {
         ${this._runResult?.title}
       </ha-automation-row-event-chip>
 
+      ${renderRowErrorIcon(
+        this.hass.localize,
+        this.pathController.errors,
+        this.pathController.path,
+        this.hass.localize("ui.panel.config.automation.editor.errors.label")
+      )}
       <slot name="icons" slot="icons"></slot>
 
       <ha-dropdown
@@ -639,7 +658,16 @@ export default class HaAutomationActionRow extends LitElement {
           ${this._renderOverflowLabel(
             this.hass.localize(
               `ui.panel.config.automation.editor.edit_${!this._yamlMode ? "yaml" : "ui"}`
-            )
+            ),
+            this._selected
+              ? html`<span class="shortcut">
+                  <span>${renderCtrlOrCmd(this.hass.localize)}</span>
+                  <span>+</span>
+                  <span>Shift</span>
+                  <span>+</span>
+                  <span>Y</span>
+                </span>`
+              : undefined
           )}
         </ha-dropdown-item>
 
@@ -781,6 +809,7 @@ export default class HaAutomationActionRow extends LitElement {
                   ...ACTION_COMBINED_BLOCKS,
                 ].includes(blockType!)}
                 .sortSelected=${this.sortSelected}
+                .error=${this.pathController.errors.length > 0}
                 .dim=${this._running}
                 @click=${this._toggleSidebar}
                 @toggle-collapsed=${this._toggleCollapse}
@@ -1252,6 +1281,7 @@ export default class HaAutomationActionRow extends LitElement {
     const actionType = getAutomationActionType(sidebarAction);
 
     fireEvent(this, "open-sidebar", {
+      type: "action",
       save: (value) => {
         this._sidebarAction = value;
         fireEvent(this, "value-changed", { value });

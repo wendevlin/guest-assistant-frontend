@@ -85,6 +85,7 @@ import type {
   DataTableFiltersValue,
   DataTableFiltersValues,
 } from "../../../data/data_table_filters";
+import { filtersMatchUnassignedItem } from "../../../data/data_table_filters";
 import {
   fetchDiagnosticHandlers,
   getConfigEntryDiagnosticsDownloadUrl,
@@ -540,7 +541,8 @@ export class HaConfigHelpers extends SubscribeMixin(LitElement) {
       entityReg: EntityRegistryEntry[],
       categoryReg?: CategoryRegistryEntry[],
       labelReg?: LabelRegistryEntry[],
-      filteredStateItems?: string[] | null
+      filteredStateItems?: string[] | null,
+      includeUnassigned = true
     ): HelperItem[] => {
       if (filteredStateItems === null) {
         return [];
@@ -613,11 +615,15 @@ export class HaConfigHelpers extends SubscribeMixin(LitElement) {
       }));
 
       return [...states, ...entries, ...disabledItems]
-        .filter((item) =>
-          filteredStateItems
-            ? filteredStateItems?.includes(item.entity_id)
-            : true
-        )
+        .filter((item) => {
+          if (!filteredStateItems) {
+            return true;
+          }
+          // A config entry that has no entity yet has nothing assigned
+          return item.entity_id
+            ? filteredStateItems.includes(item.entity_id)
+            : includeUnassigned;
+        })
         .map((item) => {
           const entityRegEntry =
             entityRegistryByEntityId(entityReg)[item.entity_id];
@@ -688,7 +694,8 @@ export class HaConfigHelpers extends SubscribeMixin(LitElement) {
       this._entityReg,
       this._categories,
       this._labels,
-      this._filteredHelperEntityIds
+      this._filteredHelperEntityIds,
+      filtersMatchUnassignedItem(this._filters)
     );
     return html`
       <hass-tabs-subpage-data-table
@@ -747,6 +754,7 @@ export class HaConfigHelpers extends SubscribeMixin(LitElement) {
       >
         <ha-filter-floor-areas
           .type=${"entity"}
+          include-disabled-entities
           .value=${this._filters["ha-filter-floor-areas"]}
           @data-table-filter-changed=${this._filterChanged}
           slot="filter-pane"
@@ -1162,7 +1170,7 @@ export class HaConfigHelpers extends SubscribeMixin(LitElement) {
     const promises: Promise<UpdateEntityRegistryEntryResult>[] = [];
     this._selected.forEach((entityId) => {
       promises.push(
-        updateEntityRegistryEntry(this.hass, entityId, {
+        updateEntityRegistryEntry(this.hass.callWS, entityId, {
           categories: { helpers: category },
         })
       );
@@ -1200,7 +1208,7 @@ ${rejected
     this._selected.forEach((entityId) => {
       const labels = this._labelsForEntity(entityId);
       promises.push(
-        updateEntityRegistryEntry(this.hass, entityId, {
+        updateEntityRegistryEntry(this.hass.callWS, entityId, {
           labels:
             action === "add"
               ? labels.concat(label)
@@ -1302,14 +1310,15 @@ ${rejected
     if (isHelperDomain(domain)) {
       showHelperDetailDialog(this, {
         domain,
+        navigateToResult: true,
       });
       return;
     }
-    const handlers = await getConfigFlowHandlers(this.hass, "helper");
+    const handlers = await getConfigFlowHandlers(this.hass.callApi, "helper");
 
     if (!handlers.includes(domain)) {
       const integrations = await getConfigFlowHandlers(
-        this.hass,
+        this.hass.callApi,
         "integration"
       );
       if (integrations.includes(domain)) {
@@ -1345,6 +1354,7 @@ ${rejected
     showConfigFlowDialog(this, {
       startFlowHandler: domain,
       manifest: await fetchIntegrationManifest(this.hass, domain),
+      navigateToResult: true,
     });
   }
 
@@ -1570,11 +1580,12 @@ ${rejected
           { name: config.name }
         ),
       },
+      navigateToResult: true,
     });
   }
 
   private _createHelper() {
-    showHelperDetailDialog(this, {});
+    showHelperDetailDialog(this, { navigateToResult: true });
   }
 
   private _bulkCreateCategory = () => {
@@ -1640,12 +1651,10 @@ ${rejected
           .slot=${slot}
           .value=${`label_${label.label_id}`}
           .action=${selected ? "remove" : "add"}
+          type="checkbox"
+          .checked=${selected}
+          .indeterminate=${partial}
         >
-          <ha-checkbox
-            slot="icon"
-            .checked=${selected}
-            .indeterminate=${partial}
-          ></ha-checkbox>
           <ha-label .color=${label.color} .description=${label.description}>
             ${
               label.icon

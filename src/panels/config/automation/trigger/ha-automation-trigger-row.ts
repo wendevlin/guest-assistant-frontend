@@ -120,6 +120,8 @@ import "./types/ha-automation-trigger-webhook";
 import "./types/ha-automation-trigger-zone";
 import { renderCtrlOrCmd } from "../../../../common/keyboard/ctrl-or-cmd";
 import { scrollRowIntoView } from "../scroll-row-into-view";
+import { AutomationPathController } from "../automation-path";
+import { renderRowErrorIcon } from "../automation-error-templates";
 import { targetExpandGroupContext } from "../../../../components/target-picker/target-expand-group-context";
 
 export interface TriggerElement extends LitElement {
@@ -164,7 +166,7 @@ export default class HaAutomationTriggerRow extends LitElement {
 
   @property({ type: Boolean }) public last?: boolean;
 
-  @property({ type: Number }) public index?: number;
+  @property({ attribute: false }) public index!: number;
 
   @property({ type: Boolean }) public highlight?: boolean;
 
@@ -173,6 +175,11 @@ export default class HaAutomationTriggerRow extends LitElement {
 
   @property({ type: Boolean, attribute: "sort-selected" })
   public sortSelected = false;
+
+  protected readonly pathController = new AutomationPathController(this, {
+    segment: () => [this.index],
+    row: () => (this.optionsInSidebar ? this : undefined),
+  });
 
   @state() private _yamlMode = false;
 
@@ -394,6 +401,12 @@ export default class HaAutomationTriggerRow extends LitElement {
         )}
       </ha-automation-row-event-chip>
 
+      ${renderRowErrorIcon(
+        this.hass.localize,
+        this.pathController.errors,
+        this.pathController.path,
+        this.hass.localize("ui.panel.config.automation.editor.errors.label")
+      )}
       <slot name="icons" slot="icons"></slot>
 
       <ha-dropdown
@@ -555,7 +568,16 @@ export default class HaAutomationTriggerRow extends LitElement {
           ${this._renderOverflowLabel(
             this.hass.localize(
               `ui.panel.config.automation.editor.edit_${!yamlMode ? "yaml" : "ui"}`
-            )
+            ),
+            this._selected
+              ? html`<span class="shortcut">
+                  <span>${renderCtrlOrCmd(this.hass.localize)}</span>
+                  <span>+</span>
+                  <span>Shift</span>
+                  <span>+</span>
+                  <span>Y</span>
+                </span>`
+              : undefined
           )}
         </ha-dropdown-item>
 
@@ -649,6 +671,7 @@ export default class HaAutomationTriggerRow extends LitElement {
                 .selected=${this._selected}
                 .highlight=${this.highlight}
                 .sortSelected=${this.sortSelected}
+                .error=${this.pathController.errors.length > 0}
                 .dim=${this._triggered}
                 @click=${this._toggleSidebar}
                 >${
@@ -831,6 +854,7 @@ export default class HaAutomationTriggerRow extends LitElement {
   public openSidebar(trigger?: Trigger): void {
     trigger = trigger || this.trigger;
     fireEvent(this, "open-sidebar", {
+      type: "trigger",
       save: (value) => {
         fireEvent(this, "value-changed", { value });
       },
@@ -1196,6 +1220,10 @@ export default class HaAutomationTriggerRow extends LitElement {
   };
 
   public expand() {
+    // Rows that open in the sidebar have nothing to expand
+    if (this.optionsInSidebar) {
+      return;
+    }
     this.updateComplete.then(() => {
       this.shadowRoot!.querySelector("ha-expansion-panel")!.expanded = true;
     });

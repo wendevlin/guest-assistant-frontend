@@ -14,10 +14,14 @@ export const integrationsWithPanel = {
   bluetooth: "config/bluetooth",
   dhcp: "config/dhcp",
   infrared: "config/infrared",
+  lorawan: "config/lorawan",
   matter: "config/matter",
+  modbus: "config/modbus",
   mqtt: "config/mqtt",
+  radio_frequency: "config/radio-frequency",
   ssdp: "config/ssdp",
   thread: "config/thread",
+  usb: "config/serial",
   zeroconf: "config/zeroconf",
   zha: "config/zha/dashboard",
   zwave_js: "config/zwave_js/dashboard",
@@ -74,6 +78,8 @@ export interface IntegrationManifest {
   )[];
   homekit?: { models?: string[] };
   integration_type?: IntegrationType;
+  // Categories like `energy` or subcategories like `energy.ev_charging`
+  categories?: string[];
   loggers?: string[];
   quality_scale?:
     | "bronze"
@@ -192,8 +198,8 @@ export const fetchIntegrationManifest = (
     .callWS<IntegrationManifest>({ type: "manifest/get", integration })
     .then(sanitizeManifest);
 
-export const fetchIntegrationSetups = (hass: HomeAssistant) =>
-  hass.callWS<IntegrationSetup[]>({ type: "integration/setup_info" });
+export const fetchIntegrationSetups = (callWS: HomeAssistant["callWS"]) =>
+  callWS<IntegrationSetup[]>({ type: "integration/setup_info" });
 
 export const fetchIntegrationLogInfo = (conn) =>
   conn.sendMessagePromise({

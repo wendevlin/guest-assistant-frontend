@@ -82,6 +82,10 @@ export default [
         pages: ["ha-alert", "ha-spinner", "ha-tip", "ha-bar", "ha-gauge"],
       },
       {
+        header: "Charts",
+        pages: ["state-history-charts", "statistics-chart"],
+      },
+      {
         header: "Labels and text",
         pages: ["ha-badge", "ha-label-badge", "ha-chips", "ha-marquee-text"],
       },
@@ -140,6 +144,7 @@ export default [
           "iframe-card",
           "markdown-card",
           "todo-list-card",
+          "timer-list-card",
         ],
       },
     ],
@@ -167,7 +172,7 @@ export default [
       },
       {
         header: "Inputs and values",
-        pages: ["input-number", "input-text", "number", "timer"],
+        pages: ["input-number", "input-text", "number", "timer", "timer-list"],
       },
       {
         header: "Time and schedules",

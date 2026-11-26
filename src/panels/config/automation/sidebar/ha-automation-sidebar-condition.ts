@@ -100,12 +100,9 @@ export default class HaAutomationSidebarCondition extends LitElement {
       "ui.panel.config.automation.editor.conditions.condition"
     );
 
-    const domain =
-      "condition" in this.config.config &&
-      getConditionDomain(this.config.config.condition);
+    const domain = typeof type === "string" && getConditionDomain(type);
     const conditionName =
-      "condition" in this.config.config &&
-      getConditionObjectId(this.config.config.condition);
+      typeof type === "string" && getConditionObjectId(type);
 
     const title =
       this.hass.localize(
@@ -286,7 +283,17 @@ export default class HaAutomationSidebarCondition extends LitElement {
           ${this.hass.localize(
             `ui.panel.config.automation.editor.edit_${!this.yamlMode ? "yaml" : "ui"}`
           )}
-          <span class="shortcut-placeholder ${isMac ? "mac" : ""}"></span>
+          ${
+            !this.narrow
+              ? html`<span class="shortcut">
+                  <span>${renderCtrlOrCmd(this.hass.localize)}</span>
+                  <span>+</span>
+                  <span>Shift</span>
+                  <span>+</span>
+                  <span>Y</span>
+                </span>`
+              : nothing
+          }
         </div>
       </ha-dropdown-item>
 

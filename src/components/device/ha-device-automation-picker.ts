@@ -49,6 +49,10 @@ export abstract class HaDeviceAutomationPicker<
 
   @property({ type: Object }) public value?: T;
 
+  @property({ type: Boolean }) public invalid = false;
+
+  @property({ attribute: "error-message" }) public errorMessage?: string;
+
   @state() private _automations?: T[];
 
   // Trigger an empty render so we start with a clean DOM.
@@ -103,6 +107,13 @@ export abstract class HaDeviceAutomationPicker<
   protected get NO_AUTOMATION_TEXT() {
     return this._i18n.localize(
       "ui.panel.config.devices.automation.actions.no_actions"
+    );
+  }
+
+  /** Error shown when the picked device has nothing to choose from. */
+  protected get NOT_SUPPORTED_TEXT() {
+    return this._i18n.localize(
+      "ui.panel.config.devices.automation.actions.not_supported"
     );
   }
 
@@ -161,7 +172,14 @@ export abstract class HaDeviceAutomationPicker<
     return html`<ha-generic-picker
       .label=${this.label}
       .value=${value}
-      .disabled=${!this._automations || this._automations.length === 0}
+      .disabled=${this._automations?.length === 0}
+      .loading=${this._automations === undefined}
+      .invalid=${this.invalid}
+      .errorMessage=${
+        this._automations?.length === 0
+          ? this.NOT_SUPPORTED_TEXT
+          : this.errorMessage
+      }
       .getItems=${this._getItems(
         value,
         this._automations,
